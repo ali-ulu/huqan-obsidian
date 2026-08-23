@@ -91,9 +91,9 @@ var VerificationModal = class extends import_obsidian.Modal {
     contentEl.addClass("huqan-trust-panel-modal");
     const shell = contentEl.createDiv({ cls: "huqan-trust-panel" });
     const header = shell.createDiv({ cls: "huqan-trust-panel__header" });
-    header.createEl("div", { cls: "huqan-trust-panel__eyebrow", text: "Live HUQAN verification" });
+    header.createDiv({ cls: "huqan-trust-panel__eyebrow", text: "Live HUQAN verification" });
     header.createEl("h2", { text: "Evidence & Trust" });
-    header.createEl("div", { cls: "huqan-trust-panel__source", text: this.sourceLabel });
+    header.createDiv({ cls: "huqan-trust-panel__source", text: this.sourceLabel });
     const counts = { verified: 0, contradicted: 0, unknown: 0, error: 0 };
     for (const result of this.results) {
       const status = statusOf(result);
@@ -104,27 +104,27 @@ var VerificationModal = class extends import_obsidian.Modal {
     }
     const summary = shell.createDiv({ cls: "huqan-trust-panel__summary" });
     summary.createEl("strong", { text: `${this.results.length} statement${this.results.length === 1 ? "" : "s"} checked` });
-    summary.createEl("div", {
+    summary.createDiv({
       text: `Verified ${counts.verified} \xB7 Contradicted ${counts.contradicted} \xB7 Unknown ${counts.unknown} \xB7 Errors ${counts.error}`
     });
-    summary.createEl("div", { cls: "huqan-trust-panel__scope", text: `Scope: ${this.verifyScope}` });
+    summary.createDiv({ cls: "huqan-trust-panel__scope", text: `Scope: ${this.verifyScope}` });
     const list = shell.createDiv({ cls: "huqan-trust-panel__results" });
     for (const result of this.results) {
       const status = statusOf(result);
       const card = list.createDiv({ cls: `huqan-trust-panel__result is-${status}` });
       const top = card.createDiv({ cls: "huqan-trust-panel__result-top" });
-      top.createEl("span", { cls: "huqan-trust-panel__status", text: status });
+      top.createSpan({ cls: "huqan-trust-panel__status", text: status });
       const confidence = (_b = (_a = result.envelope) == null ? void 0 : _a.data) == null ? void 0 : _b.confidence;
       if (typeof confidence === "number") {
-        top.createEl("span", { cls: "huqan-trust-panel__confidence", text: `${Math.round(confidence * 100)}% confidence` });
+        top.createSpan({ cls: "huqan-trust-panel__confidence", text: `${Math.round(confidence * 100)}% confidence` });
       }
-      card.createEl("div", { cls: "huqan-trust-panel__statement", text: result.statement });
+      card.createDiv({ cls: "huqan-trust-panel__statement", text: result.statement });
       if (result.error) {
-        card.createEl("div", { cls: "huqan-trust-panel__error", text: result.error });
+        card.createDiv({ cls: "huqan-trust-panel__error", text: result.error });
         continue;
       }
       const explanation = (_d = (_c = result.envelope) == null ? void 0 : _c.data) == null ? void 0 : _d.explanation;
-      if (explanation) card.createEl("div", { cls: "huqan-trust-panel__explanation", text: explanation });
+      if (explanation) card.createDiv({ cls: "huqan-trust-panel__explanation", text: explanation });
       const evidence = evidenceLines(result.envelope);
       if (evidence.length > 0) {
         const evidenceEl = card.createDiv({ cls: "huqan-trust-panel__evidence" });
@@ -134,7 +134,7 @@ var VerificationModal = class extends import_obsidian.Modal {
       }
       const riskLabels = (_g = (_f = (_e = result.envelope) == null ? void 0 : _e.data) == null ? void 0 : _f.risk) == null ? void 0 : _g.labels;
       if (Array.isArray(riskLabels) && riskLabels.length > 0) {
-        card.createEl("div", { cls: "huqan-trust-panel__risk", text: `Risk signals: ${riskLabels.join(", ")}` });
+        card.createDiv({ cls: "huqan-trust-panel__risk", text: `Risk signals: ${riskLabels.join(", ")}` });
       }
     }
   }
@@ -262,7 +262,7 @@ var HuqanSettingTab = class extends import_obsidian.PluginSettingTab {
       this.plugin.settings.workspaceId = value.trim() || "default";
       await this.plugin.saveSettings();
     }));
-    new import_obsidian.Setting(containerEl).setName("Statements per note").setDesc("Bounds a full-note scan so a large note cannot flood the local verifier.").addSlider((slider) => slider.setLimits(1, 40, 1).setValue(this.plugin.settings.maxStatements).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Statements per note").setDesc("Bounds a full-note scan so a large note cannot flood the local verifier.").addSlider((slider) => slider.setLimits(1, 40, 1).setValue(this.plugin.settings.maxStatements).onChange(async (value) => {
       this.plugin.settings.maxStatements = value;
       await this.plugin.saveSettings();
     }));

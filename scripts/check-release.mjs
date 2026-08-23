@@ -38,6 +38,12 @@ for (const file of sourceFiles) {
   if (/document\.createElement\s*\(/.test(source)) {
     throw new Error(`${file} must use Obsidian DOM helpers instead of document.createElement`);
   }
+  if (/\.createEl\(\s*['"](?:div|span)['"]/.test(source)) {
+    throw new Error(`${file} should use createDiv/createSpan for generic elements`);
+  }
+  if (/\.setDynamicTooltip\(\s*\)/.test(source)) {
+    throw new Error(`${file} must not use deprecated setDynamicTooltip()`);
+  }
   if (/setName\(\s*['"]HUQAN Trust Panel['"]\s*\)/.test(source)) {
     throw new Error(`${file} must not use the plugin name in a settings heading`);
   }
