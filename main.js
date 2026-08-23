@@ -20,7 +20,8 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var main_exports = {};
 __export(main_exports, {
   buildVerificationReport: () => buildVerificationReport,
-  default: () => HuqanTrustPanelPlugin
+  default: () => HuqanTrustPanelPlugin,
+  resultGuidance: () => resultGuidance
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
@@ -143,6 +144,20 @@ function evidenceLines(envelope) {
   if (Array.isArray(summary) && summary.length > 0) return summary.slice(0, 4).map(String);
   return ((envelope == null ? void 0 : envelope.evidence) || []).map((item) => typeof (item == null ? void 0 : item.text) === "string" ? item.text : "").filter(Boolean).slice(0, 4);
 }
+function resultGuidance(status) {
+  if (status === "contradicted") return "Conflict detected \u2014 review this statement against the evidence below.";
+  if (status === "verified") return "Supporting evidence returned \u2014 review it before relying on the statement.";
+  if (status === "unknown") return "Not enough evidence \u2014 this does not mean the statement is false.";
+  if (status === "error") return "Verification failed \u2014 no conclusion was produced for this statement.";
+  return "Review the returned context before relying on this statement.";
+}
+function statusPriority(status) {
+  if (status === "contradicted") return 0;
+  if (status === "error") return 1;
+  if (status === "unknown") return 2;
+  if (status === "verified") return 3;
+  return 4;
+}
 var VerificationModal = class extends import_obsidian.Modal {
   constructor(app, verifyScope, sourceLabel, results, onSaveReport) {
     super(app);
@@ -152,7 +167,7 @@ var VerificationModal = class extends import_obsidian.Modal {
     this.onSaveReport = onSaveReport;
   }
   onOpen() {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("huqan-trust-panel-modal");
@@ -172,6 +187,11 @@ var VerificationModal = class extends import_obsidian.Modal {
     const summary = shell.createDiv({ cls: "huqan-trust-panel__summary" });
     summary.createEl("strong", { text: `${this.results.length} statement${this.results.length === 1 ? "" : "s"} checked` });
     summary.createDiv({
+      cls: `huqan-trust-panel__headline ${counts.contradicted > 0 ? "has-contradictions" : "is-clear"}`,
+      text: counts.contradicted > 0 ? `${counts.contradicted} contradiction${counts.contradicted === 1 ? "" : "s"} found \u2014 review below` : "No contradictions returned"
+    });
+    summary.createDiv({
+      cls: "huqan-trust-panel__count-line",
       text: `Verified ${counts.verified} \xB7 Contradicted ${counts.contradicted} \xB7 Unknown ${counts.unknown} \xB7 Errors ${counts.error}`
     });
     summary.createDiv({ cls: "huqan-trust-panel__scope", text: `Scope: ${this.verifyScope}` });
@@ -180,35 +200,73 @@ var VerificationModal = class extends import_obsidian.Modal {
       void this.onSaveReport();
     });
     actions.createDiv({ cls: "huqan-trust-panel__privacy-note", text: "The report includes the checked text and returned evidence." });
+    const cards = [];
+    const filterButtons = [];
+    const applyFilter = (filter) => {
+      cards.forEach(({ status, element }) => {
+        element.style.display = filter === "all" || status === filter ? "" : "none";
+      });
+      filterButtons.forEach(({ key, button }) => {
+        const active = key === filter;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    };
+    const filterBar = shell.createDiv({ cls: "huqan-trust-panel__filters", attr: { "aria-label": "Filter verification results" } });
+    const filterOptions = [
+      { key: "all", label: `All (${this.results.length})` },
+      { key: "contradicted", label: `Contradicted (${counts.contradicted})` },
+      { key: "unknown", label: `Unknown (${counts.unknown})` },
+      { key: "verified", label: `Verified (${counts.verified})` },
+      { key: "error", label: `Errors (${counts.error})` }
+    ];
+    filterOptions.forEach(({ key, label }) => {
+      const button = filterBar.createEl("button", { cls: "huqan-trust-panel__filter", text: label });
+      button.type = "button";
+      button.addEventListener("click", () => applyFilter(key));
+      filterButtons.push({ key, button });
+    });
     const list = shell.createDiv({ cls: "huqan-trust-panel__results" });
-    for (const result of this.results) {
+    const orderedResults = [...this.results].sort((left, right) => statusPriority(statusOf(left)) - statusPriority(statusOf(right)));
+    for (const result of orderedResults) {
       const status = statusOf(result);
       const card = list.createDiv({ cls: `huqan-trust-panel__result is-${status}` });
+      cards.push({ status, element: card });
       const top = card.createDiv({ cls: "huqan-trust-panel__result-top" });
-      top.createSpan({ cls: "huqan-trust-panel__status", text: status });
+      top.createSpan({ cls: "huqan-trust-panel__status", text: status === "contradicted" ? "CONTRADICTION" : status.toUpperCase() });
       const confidence = (_b = (_a = result.envelope) == null ? void 0 : _a.data) == null ? void 0 : _b.confidence;
       if (typeof confidence === "number") {
         top.createSpan({ cls: "huqan-trust-panel__confidence", text: `${Math.round(confidence * 100)}% confidence` });
       }
       card.createDiv({ cls: "huqan-trust-panel__statement", text: result.statement });
+      card.createDiv({ cls: "huqan-trust-panel__guidance", text: resultGuidance(status) });
+      if (status === "contradicted") {
+        card.createDiv({
+          cls: "huqan-trust-panel__contradiction-reason",
+          text: `Why this is flagged: ${((_d = (_c = result.envelope) == null ? void 0 : _c.data) == null ? void 0 : _d.contradictionReason) || "The local runtime returned a contradiction signal."}`
+        });
+      }
       if (result.error) {
         card.createDiv({ cls: "huqan-trust-panel__error", text: result.error });
         continue;
       }
-      const explanation = (_d = (_c = result.envelope) == null ? void 0 : _c.data) == null ? void 0 : _d.explanation;
+      const explanation = (_f = (_e = result.envelope) == null ? void 0 : _e.data) == null ? void 0 : _f.explanation;
       if (explanation) card.createDiv({ cls: "huqan-trust-panel__explanation", text: explanation });
       const evidence = evidenceLines(result.envelope);
       if (evidence.length > 0) {
         const evidenceEl = card.createDiv({ cls: "huqan-trust-panel__evidence" });
-        evidenceEl.createEl("strong", { text: "Evidence" });
+        evidenceEl.createEl("strong", { text: "Evidence returned by local runtime" });
         const ul = evidenceEl.createEl("ul");
         evidence.forEach((line) => ul.createEl("li", { text: line }));
+      } else {
+        card.createDiv({ cls: "huqan-trust-panel__no-evidence", text: "No evidence summary was returned for this result." });
       }
-      const riskLabels = (_g = (_f = (_e = result.envelope) == null ? void 0 : _e.data) == null ? void 0 : _f.risk) == null ? void 0 : _g.labels;
+      const riskLabels = (_i = (_h = (_g = result.envelope) == null ? void 0 : _g.data) == null ? void 0 : _h.risk) == null ? void 0 : _i.labels;
       if (Array.isArray(riskLabels) && riskLabels.length > 0) {
         card.createDiv({ cls: "huqan-trust-panel__risk", text: `Risk signals: ${riskLabels.join(", ")}` });
       }
     }
+    applyFilter("all");
   }
   onClose() {
     this.contentEl.empty();

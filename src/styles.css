@@ -44,7 +44,29 @@
 
 .huqan-trust-panel__summary {
   display: grid;
-  gap: 4px;
+  gap: 6px;
+}
+
+.huqan-trust-panel__headline {
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.huqan-trust-panel__headline.has-contradictions {
+  background: rgba(214, 54, 55, 0.14);
+  color: var(--text-error);
+}
+
+.huqan-trust-panel__headline.is-clear {
+  background: rgba(72, 176, 108, 0.12);
+  color: var(--text-success);
+}
+
+.huqan-trust-panel__count-line {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .huqan-trust-panel__result {
@@ -64,6 +86,43 @@
 
 .huqan-trust-panel__result.is-unknown {
   border-left-color: var(--color-yellow);
+}
+
+.huqan-trust-panel__result.is-contradicted .huqan-trust-panel__status {
+  background: rgba(214, 54, 55, 0.16);
+  color: var(--text-error);
+}
+
+.huqan-trust-panel__result.is-unknown .huqan-trust-panel__status {
+  background: rgba(219, 171, 35, 0.16);
+  color: var(--text-warning);
+}
+
+.huqan-trust-panel__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.huqan-trust-panel__filter {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+.huqan-trust-panel__filter:hover,
+.huqan-trust-panel__filter.is-active {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.huqan-trust-panel__filter.is-active {
+  font-weight: 700;
 }
 
 .huqan-trust-panel__result-top {
@@ -90,12 +149,32 @@
   line-height: 1.45;
 }
 
+.huqan-trust-panel__guidance,
+.huqan-trust-panel__contradiction-reason,
 .huqan-trust-panel__explanation,
 .huqan-trust-panel__evidence,
+.huqan-trust-panel__no-evidence,
 .huqan-trust-panel__risk,
 .huqan-trust-panel__error {
   font-size: 13px;
   line-height: 1.45;
+}
+
+.huqan-trust-panel__guidance {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.huqan-trust-panel__contradiction-reason {
+  border-radius: 8px;
+  background: rgba(214, 54, 55, 0.1);
+  color: var(--text-error);
+  padding: 9px 10px;
+}
+
+.huqan-trust-panel__no-evidence {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .huqan-trust-panel__evidence ul {
