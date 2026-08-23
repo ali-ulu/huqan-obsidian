@@ -295,20 +295,20 @@ var HuqanTrustPanelPlugin = class extends import_obsidian.Plugin {
       if (typeof savedData.maxStatements === "number") this.settings.maxStatements = savedData.maxStatements;
     }
     this.addSettingTab(new HuqanSettingTab(this.app, this));
-    this.addRibbonIcon("shield-check", "HUQAN: Verify current note", () => {
+    this.addRibbonIcon("shield-check", "Verify current note", () => {
       void this.verifyCurrentNote();
     });
-    this.addCommand({ id: "huqan-verify-current-note", name: "HUQAN: Verify current note", callback: () => {
+    this.addCommand({ id: "huqan-verify-current-note", name: "Verify current note", callback: () => {
       void this.verifyCurrentNote();
     } });
     this.addCommand({
       id: "huqan-verify-selected-text",
-      name: "HUQAN: Verify selected text",
+      name: "Verify selected text",
       editorCallback: (editor) => {
         void this.verifySelection(editor);
       }
     });
-    this.addCommand({ id: "huqan-test-connection", name: "HUQAN: Test connection", callback: () => {
+    this.addCommand({ id: "huqan-test-connection", name: "Test connection", callback: () => {
       void this.showConnectionTest();
     } });
   }

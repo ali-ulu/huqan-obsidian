@@ -332,14 +332,14 @@ export default class HuqanTrustPanelPlugin extends Plugin {
       if (typeof savedData.maxStatements === 'number') this.settings.maxStatements = savedData.maxStatements;
     }
     this.addSettingTab(new HuqanSettingTab(this.app, this));
-    this.addRibbonIcon('shield-check', 'HUQAN: Verify current note', () => { void this.verifyCurrentNote(); });
-    this.addCommand({ id: 'huqan-verify-current-note', name: 'HUQAN: Verify current note', callback: () => { void this.verifyCurrentNote(); } });
+    this.addRibbonIcon('shield-check', 'Verify current note', () => { void this.verifyCurrentNote(); });
+    this.addCommand({ id: 'huqan-verify-current-note', name: 'Verify current note', callback: () => { void this.verifyCurrentNote(); } });
     this.addCommand({
       id: 'huqan-verify-selected-text',
-      name: 'HUQAN: Verify selected text',
+      name: 'Verify selected text',
       editorCallback: (editor: Editor) => { void this.verifySelection(editor); },
     });
-    this.addCommand({ id: 'huqan-test-connection', name: 'HUQAN: Test connection', callback: () => { void this.showConnectionTest(); } });
+    this.addCommand({ id: 'huqan-test-connection', name: 'Test connection', callback: () => { void this.showConnectionTest(); } });
   }
 
   async saveSettings(): Promise<void> {

@@ -50,6 +50,9 @@ for (const file of sourceFiles) {
   if (/setName\(\s*['"](?:HUQAN|HUQAN Trust Panel)['"]\s*\)/.test(source)) {
     throw new Error(`${file} must not use the plugin name HUQAN in a settings heading`);
   }
+  if (/name:\s*['"]HUQAN:\s/.test(source) || /addRibbonIcon\([^,]+,\s*['"]HUQAN:\s/.test(source)) {
+    throw new Error(`${file} must not repeat the plugin name in command or ribbon labels`);
+  }
 }
 
 const pluginSource = fs.readFileSync(path.join(root, 'src/main.ts'), 'utf8');

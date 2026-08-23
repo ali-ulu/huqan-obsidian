@@ -68,7 +68,7 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
 const waitForAsyncCallback = () => new Promise(resolve => setImmediate(resolve));
 
 test('settings expose searchable declarative definitions without plugin-name headings', async () => {
-  const { plugin, settingTabs } = loadPlugin({
+  const { plugin, settingTabs, commands } = loadPlugin({
     settings: { endpoint: 'http://127.0.0.1:3000', apiKey: '', workspaceId: 'default', maxStatements: 20 },
     requestHandler: async () => ({ status: 200, json: { ok: true } }),
   });
@@ -76,6 +76,7 @@ test('settings expose searchable declarative definitions without plugin-name hea
   const definitions = settingTabs[0].getSettingDefinitions();
   assert.equal(definitions[0].name, 'Verification');
   assert.ok(definitions.every(definition => definition.name !== 'HUQAN'));
+  assert.deepEqual(commands.map(command => command.name), ['Verify current note', 'Verify selected text', 'Test connection']);
   assert.deepEqual(
     definitions.filter(definition => 'control' in definition).map(definition => definition.control.key),
     ['endpoint', 'workspaceId', 'maxStatements'],

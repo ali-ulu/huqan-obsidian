@@ -72,9 +72,9 @@ Use **Test HUQAN** before the first verification.
 
 ## Commands
 
-- `HUQAN: Verify current note`
-- `HUQAN: Verify selected text`
-- `HUQAN: Test connection`
+- `Verify current note`
+- `Verify selected text`
+- `Test connection`
 
 The shield ribbon icon runs **Verify current note**.
 

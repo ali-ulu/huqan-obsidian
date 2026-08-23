@@ -1,6 +1,6 @@
 {
   "name": "huqan-trust-panel",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Verify note statements against a local HUQAN runtime in Obsidian.",
   "main": "main.js",
   "scripts": {
