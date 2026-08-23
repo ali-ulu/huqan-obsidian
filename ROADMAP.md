@@ -20,9 +20,9 @@ HUQAN should make it easier to inspect the evidence behind bounded statements in
 | Compatibility | Supports the declarative settings API on newer Obsidian versions and retains the legacy settings display for older supported versions. |
 | Release integrity | Uses reproducible committed bundles, pinned release automation, and provenance attestations for release assets. |
 
-## Next release: 1.1.6
+## Released in 1.1.6
 
-The next patch release addresses the Community listing warning and the first safe part of issue #7.
+Release 1.1.6 addresses the Community listing warning and delivers the first safe part of issue #7. The exact release scan completed successfully in the Community review panel.
 
 | Work item | Acceptance criteria |
 |---|---|
@@ -31,7 +31,7 @@ The next patch release addresses the Community listing warning and the first saf
 | Contradiction preservation | Saved reports include the checked statement, status, contradiction reason, explanation, evidence summaries, confidence, and risk labels when available. |
 | User awareness | The UI and documentation warn that saved reports contain checked text and returned evidence. |
 | Regression protection | Tests cover report formatting, contradiction details, file naming, and local vault creation. |
-| Community validation | A completed scan for the exact 1.1.6 release ref is required before calling the release Community-approved. |
+| Community validation | The exact 1.1.6 release ref completed its Community scan with release, network, behavior, dependency, obfuscation, and build checks passing. |
 
 ## 1.2 — Onboarding and diagnostics
 
@@ -53,7 +53,7 @@ Performance work should preserve the existing statement bound and should not int
 
 ## Research track: contradiction persistence
 
-Issue #7 also describes a deeper runtime feature: persisting contradictions in HUQAN candidate or graph structures. That work is intentionally separate from the plugin’s current report feature. The plugin must not silently call HUQAN ingest, learn, approval, mutation, or action endpoints.
+The plugin-side report portion of issue #7 is implemented in 1.1.6. The remaining issue describes a deeper runtime feature: persisting contradictions in HUQAN candidate or graph structures. That work is intentionally separate from the plugin’s current report feature. The plugin must not silently call HUQAN ingest, learn, approval, mutation, or action endpoints.
 
 A runtime-side contradiction graph would require a separate HUQAN design proposal, explicit user intent, provenance rules, review semantics, authorization boundaries, migration planning, and cross-repository compatibility tests. Until those conditions are met, HUQAN Obsidian will preserve contradictions in user-requested local Markdown reports rather than mutating runtime state.
 
