@@ -1,4 +1,4 @@
-# HUQAN Evidence & Trust for Obsidian
+# HUQAN Trust Panel
 
 Verify statements in an **Obsidian note** against a **real local HUQAN runtime**.
 The plugin does not use a mock verifier and does not send note text or API keys
@@ -91,11 +91,11 @@ Release artifacts are:
 - `main.js`
 - `manifest.json`
 - `styles.css`
-- `SHA256SUMS.txt`
 
 Create a Git tag that exactly matches `manifest.json` and `package.json` `version`.
 The release workflow builds the bundle, validates the Community Plugins contract,
-generates checksums, and publishes the four assets to the GitHub Release.
+generates GitHub artifact provenance attestations, and publishes the three files
+that Obsidian downloads to the GitHub Release.
 
 The `version-bump.mjs` helper updates `manifest.json`, `versions.json`,
 `package.json`, and `package-lock.json` together. `versions.json` is maintained

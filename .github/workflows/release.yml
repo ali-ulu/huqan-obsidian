@@ -21,6 +21,10 @@ jobs:
     name: Build, test, and validate plugin
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -47,8 +51,13 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Generate release checksums
-        run: sha256sum main.js manifest.json styles.css > SHA256SUMS.txt
+      - name: Generate artifact provenance attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
 
       - name: Verify committed bundle is reproducible
         run: git diff --exit-code -- main.js styles.css
@@ -61,7 +70,6 @@ jobs:
             main.js
             manifest.json
             styles.css
-            SHA256SUMS.txt
           if-no-files-found: error
 
   release:
@@ -114,4 +122,4 @@ jobs:
             --verify-tag \
             --title "HUQAN Trust Panel $TAG" \
             --notes "HUQAN Trust Panel for Obsidian. Requires a local HUQAN runtime. Verification is read-only and API keys are restricted to loopback endpoints." \
-            main.js manifest.json styles.css SHA256SUMS.txt
+            main.js manifest.json styles.css
