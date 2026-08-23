@@ -12,7 +12,8 @@
     "lib": ["DOM", "ES5", "ES6", "ES7"],
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "strict": false
+    "strict": false,
+    "skipLibCheck": true
   },
   "include": ["src/**/*"]
 }

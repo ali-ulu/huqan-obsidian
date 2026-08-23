@@ -16,6 +16,7 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     createEl() { return new Element(); }
     createSpan() { return new Element(); }
   }
+  const settingTabs = [];
   class Plugin {
     constructor() {
       this.app = { workspace: { getActiveViewOfType: () => activeView } };
@@ -23,7 +24,7 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     }
     async loadData() { return settings; }
     async saveData() {}
-    addSettingTab() {}
+    addSettingTab(tab) { settingTabs.push(tab); }
     addRibbonIcon() {}
     addCommand(command) { commands.push(command); }
   }
@@ -61,12 +62,29 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
   delete require.cache[target];
   const PluginClass = require(target).default;
   Module._load = originalLoad;
-  return { plugin: new PluginClass(), commands, notices };
+  return { plugin: new PluginClass(), commands, notices, settingTabs };
 }
 
 const waitForAsyncCallback = () => new Promise(resolve => setImmediate(resolve));
 
- test('selected text is verified through the local HUQAN v2 endpoint', async () => {
+test('settings expose searchable declarative definitions without plugin-name headings', async () => {
+  const { plugin, settingTabs } = loadPlugin({
+    settings: { endpoint: 'http://127.0.0.1:3000', apiKey: '', workspaceId: 'default', maxStatements: 20 },
+    requestHandler: async () => ({ status: 200, json: { ok: true } }),
+  });
+  await plugin.onload();
+  const definitions = settingTabs[0].getSettingDefinitions();
+  assert.equal(definitions[0].name, 'Verification');
+  assert.ok(definitions.every(definition => !definition.name.includes('HUQAN Trust Panel')));
+  assert.deepEqual(
+    definitions.filter(definition => 'control' in definition).map(definition => definition.control.key),
+    ['endpoint', 'workspaceId', 'maxStatements'],
+  );
+  assert.equal(typeof definitions.find(definition => definition.name === 'API key').render, 'function');
+  assert.equal(typeof definitions.find(definition => definition.name === 'Connection test').render, 'function');
+});
+
+test('selected text is verified through the local HUQAN v2 endpoint', async () => {
   const calls = [];
   const { plugin, commands } = loadPlugin({
     settings: { endpoint: 'http://127.0.0.1:3000', apiKey: 'secret', workspaceId: 'vault-a', maxStatements: 20 },
