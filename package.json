@@ -1,0 +1,22 @@
+{
+  "name": "huqan-trust-panel",
+  "version": "1.1.0",
+  "description": "Verify note statements against a local HUQAN runtime in Obsidian.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "test": "node --test test/*.test.js",
+    "check:release": "node scripts/check-release.mjs",
+    "check:bundle": "npm run build && git diff --exit-code -- main.js styles.css",
+    "check": "npm run check:release && npm run check:bundle && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.5.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.3.0"
+  }
+}
