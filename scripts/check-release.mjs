@@ -32,6 +32,22 @@ for (const file of ['README.md', 'LICENSE', 'main.js', 'manifest.json', 'styles.
   if (!fs.existsSync(path.join(root, file))) throw new Error(`missing release/submission file: ${file}`);
 }
 
+const sourceFiles = ['src/main.ts', 'main.js'];
+for (const file of sourceFiles) {
+  const source = fs.readFileSync(path.join(root, file), 'utf8');
+  if (/document\.createElement\s*\(/.test(source)) {
+    throw new Error(`${file} must use Obsidian DOM helpers instead of document.createElement`);
+  }
+  if (/setName\(\s*['"]HUQAN Trust Panel['"]\s*\)/.test(source)) {
+    throw new Error(`${file} must not use the plugin name in a settings heading`);
+  }
+}
+
+const pluginSource = fs.readFileSync(path.join(root, 'src/main.ts'), 'utf8');
+if (!/getSettingDefinitions\s*\(\s*\)/.test(pluginSource)) {
+  throw new Error('PluginSettingTab must implement getSettingDefinitions()');
+}
+
 console.log(`PLUGIN_ID=${manifest.id}`);
 console.log(`PLUGIN_VERSION=${manifest.version}`);
 console.log(`MIN_APP_VERSION=${manifest.minAppVersion}`);

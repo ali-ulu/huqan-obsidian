@@ -7,6 +7,7 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
+  SettingDefinition,
   requestUrl,
 } from 'obsidian';
 
@@ -101,7 +102,7 @@ function evidenceLines(envelope?: VerifyEnvelope): string[] {
 class VerificationModal extends Modal {
   constructor(
     app: App,
-    private readonly scope: VerifyScope,
+    private readonly verifyScope: VerifyScope,
     private readonly sourceLabel: string,
     private readonly results: StatementResult[],
   ) {
@@ -132,7 +133,7 @@ class VerificationModal extends Modal {
     summary.createEl('div', {
       text: `Verified ${counts.verified} · Contradicted ${counts.contradicted} · Unknown ${counts.unknown} · Errors ${counts.error}`,
     });
-    summary.createEl('div', { cls: 'huqan-trust-panel__scope', text: `Scope: ${this.scope}` });
+    summary.createEl('div', { cls: 'huqan-trust-panel__scope', text: `Scope: ${this.verifyScope}` });
 
     const list = shell.createDiv({ cls: 'huqan-trust-panel__results' });
     for (const result of this.results) {
@@ -174,10 +175,111 @@ class HuqanSettingTab extends PluginSettingTab {
     super(app, plugin);
   }
 
+  getSettingDefinitions(): SettingDefinition<keyof HuqanSettings>[] {
+    return [
+      {
+        name: 'Verification',
+        desc: 'Configure the local HUQAN verification connection.',
+      },
+      {
+        name: 'Local endpoint',
+        desc: 'Loopback only. Your API key is never sent to a remote host.',
+        control: {
+          type: 'text',
+          key: 'endpoint',
+          placeholder: DEFAULT_SETTINGS.endpoint,
+          validate: (value: string) => {
+            try {
+              normalizeEndpoint(value);
+              return undefined;
+            } catch (error) {
+              return error instanceof Error ? error.message : String(error);
+            }
+          },
+        },
+      },
+      {
+        name: 'API key',
+        desc: 'Stored in this plugin\'s local Obsidian data and sent only to the loopback endpoint.',
+        render: (setting: Setting) => {
+          setting.addText(text => {
+            text.inputEl.type = 'password';
+            text.setValue(this.plugin.settings.apiKey)
+              .onChange(async (value: string) => {
+                this.plugin.settings.apiKey = value.trim();
+                await this.plugin.saveSettings();
+              });
+          });
+        },
+      },
+      {
+        name: 'Workspace',
+        desc: 'HUQAN workspace used by /v2/verify.',
+        control: { type: 'text', key: 'workspaceId', defaultValue: DEFAULT_SETTINGS.workspaceId },
+      },
+      {
+        name: 'Statements per note',
+        desc: 'Bounds a full-note scan so a large note cannot flood the local verifier.',
+        control: {
+          type: 'slider',
+          key: 'maxStatements',
+          defaultValue: DEFAULT_SETTINGS.maxStatements,
+          min: 1,
+          max: 40,
+          step: 1,
+          displayFormat: (value: number) => `${Math.round(value)}`,
+        },
+      },
+      {
+        name: 'Connection test',
+        desc: 'Checks the configured HUQAN /health endpoint.',
+        render: (setting: Setting) => {
+          setting.addButton(button => button.setButtonText('Test HUQAN').onClick(async () => {
+            button.setDisabled(true);
+            try {
+              const health = await this.plugin.testConnection();
+              new Notice(`HUQAN connected: ${health.service || 'huqan'} · ${health.nodes ?? '?'} nodes`);
+            } catch (error) {
+              new Notice(`HUQAN connection failed: ${error instanceof Error ? error.message : String(error)}`);
+            } finally {
+              button.setDisabled(false);
+            }
+          }));
+        },
+      },
+    ];
+  }
+
+  getControlValue(key: string): unknown {
+    if (key in this.plugin.settings) return this.plugin.settings[key as keyof HuqanSettings];
+    return undefined;
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    switch (key) {
+      case 'endpoint':
+        this.plugin.settings.endpoint = normalizeEndpoint(String(value ?? ''));
+        break;
+      case 'workspaceId':
+        this.plugin.settings.workspaceId = String(value ?? '').trim() || DEFAULT_SETTINGS.workspaceId;
+        break;
+      case 'maxStatements': {
+        const parsed = Number(value);
+        this.plugin.settings.maxStatements = Number.isFinite(parsed)
+          ? Math.min(40, Math.max(1, Math.round(parsed)))
+          : DEFAULT_SETTINGS.maxStatements;
+        break;
+      }
+      default:
+        return;
+    }
+    await this.plugin.saveSettings();
+  }
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    new Setting(containerEl).setName('HUQAN Trust Panel').setHeading();
+    new Setting(containerEl).setName('Verification').setHeading();
     new Setting(containerEl)
       .setName('Local HUQAN endpoint')
       .setDesc('Loopback only. Your API key is never sent to a remote host.')

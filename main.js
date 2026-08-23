@@ -78,9 +78,9 @@ function evidenceLines(envelope) {
   return ((envelope == null ? void 0 : envelope.evidence) || []).map((item) => typeof (item == null ? void 0 : item.text) === "string" ? item.text : "").filter(Boolean).slice(0, 4);
 }
 var VerificationModal = class extends import_obsidian.Modal {
-  constructor(app, scope, sourceLabel, results) {
+  constructor(app, verifyScope, sourceLabel, results) {
     super(app);
-    this.scope = scope;
+    this.verifyScope = verifyScope;
     this.sourceLabel = sourceLabel;
     this.results = results;
   }
@@ -107,7 +107,7 @@ var VerificationModal = class extends import_obsidian.Modal {
     summary.createEl("div", {
       text: `Verified ${counts.verified} \xB7 Contradicted ${counts.contradicted} \xB7 Unknown ${counts.unknown} \xB7 Errors ${counts.error}`
     });
-    summary.createEl("div", { cls: "huqan-trust-panel__scope", text: `Scope: ${this.scope}` });
+    summary.createEl("div", { cls: "huqan-trust-panel__scope", text: `Scope: ${this.verifyScope}` });
     const list = shell.createDiv({ cls: "huqan-trust-panel__results" });
     for (const result of this.results) {
       const status = statusOf(result);
@@ -147,10 +147,106 @@ var HuqanSettingTab = class extends import_obsidian.PluginSettingTab {
     super(app, plugin);
     this.plugin = plugin;
   }
+  getSettingDefinitions() {
+    return [
+      {
+        name: "Verification",
+        desc: "Configure the local HUQAN verification connection."
+      },
+      {
+        name: "Local endpoint",
+        desc: "Loopback only. Your API key is never sent to a remote host.",
+        control: {
+          type: "text",
+          key: "endpoint",
+          placeholder: DEFAULT_SETTINGS.endpoint,
+          validate: (value) => {
+            try {
+              normalizeEndpoint(value);
+              return void 0;
+            } catch (error) {
+              return error instanceof Error ? error.message : String(error);
+            }
+          }
+        }
+      },
+      {
+        name: "API key",
+        desc: "Stored in this plugin's local Obsidian data and sent only to the loopback endpoint.",
+        render: (setting) => {
+          setting.addText((text) => {
+            text.inputEl.type = "password";
+            text.setValue(this.plugin.settings.apiKey).onChange(async (value) => {
+              this.plugin.settings.apiKey = value.trim();
+              await this.plugin.saveSettings();
+            });
+          });
+        }
+      },
+      {
+        name: "Workspace",
+        desc: "HUQAN workspace used by /v2/verify.",
+        control: { type: "text", key: "workspaceId", defaultValue: DEFAULT_SETTINGS.workspaceId }
+      },
+      {
+        name: "Statements per note",
+        desc: "Bounds a full-note scan so a large note cannot flood the local verifier.",
+        control: {
+          type: "slider",
+          key: "maxStatements",
+          defaultValue: DEFAULT_SETTINGS.maxStatements,
+          min: 1,
+          max: 40,
+          step: 1,
+          displayFormat: (value) => `${Math.round(value)}`
+        }
+      },
+      {
+        name: "Connection test",
+        desc: "Checks the configured HUQAN /health endpoint.",
+        render: (setting) => {
+          setting.addButton((button) => button.setButtonText("Test HUQAN").onClick(async () => {
+            var _a;
+            button.setDisabled(true);
+            try {
+              const health = await this.plugin.testConnection();
+              new import_obsidian.Notice(`HUQAN connected: ${health.service || "huqan"} \xB7 ${(_a = health.nodes) != null ? _a : "?"} nodes`);
+            } catch (error) {
+              new import_obsidian.Notice(`HUQAN connection failed: ${error instanceof Error ? error.message : String(error)}`);
+            } finally {
+              button.setDisabled(false);
+            }
+          }));
+        }
+      }
+    ];
+  }
+  getControlValue(key) {
+    if (key in this.plugin.settings) return this.plugin.settings[key];
+    return void 0;
+  }
+  async setControlValue(key, value) {
+    switch (key) {
+      case "endpoint":
+        this.plugin.settings.endpoint = normalizeEndpoint(String(value != null ? value : ""));
+        break;
+      case "workspaceId":
+        this.plugin.settings.workspaceId = String(value != null ? value : "").trim() || DEFAULT_SETTINGS.workspaceId;
+        break;
+      case "maxStatements": {
+        const parsed = Number(value);
+        this.plugin.settings.maxStatements = Number.isFinite(parsed) ? Math.min(40, Math.max(1, Math.round(parsed))) : DEFAULT_SETTINGS.maxStatements;
+        break;
+      }
+      default:
+        return;
+    }
+    await this.plugin.saveSettings();
+  }
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("HUQAN Trust Panel").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Verification").setHeading();
     new import_obsidian.Setting(containerEl).setName("Local HUQAN endpoint").setDesc("Loopback only. Your API key is never sent to a remote host.").addText((text) => text.setPlaceholder(DEFAULT_SETTINGS.endpoint).setValue(this.plugin.settings.endpoint).onChange(async (value) => {
       this.plugin.settings.endpoint = value.trim();
       await this.plugin.saveSettings();
