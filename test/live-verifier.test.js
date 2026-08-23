@@ -75,7 +75,7 @@ test('settings expose searchable declarative definitions without plugin-name hea
   await plugin.onload();
   const definitions = settingTabs[0].getSettingDefinitions();
   assert.equal(definitions[0].name, 'Verification');
-  assert.ok(definitions.every(definition => !definition.name.includes('HUQAN Trust Panel')));
+  assert.ok(definitions.every(definition => definition.name !== 'HUQAN'));
   assert.deepEqual(
     definitions.filter(definition => 'control' in definition).map(definition => definition.control.key),
     ['endpoint', 'workspaceId', 'maxStatements'],

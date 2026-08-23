@@ -1,4 +1,4 @@
-# HUQAN Trust Panel
+# HUQAN
 
 Verify statements in an **Obsidian note** against a **real local HUQAN runtime**.
 The plugin does not use a mock verifier and does not send note text or API keys
@@ -35,7 +35,6 @@ synchronization step: the plugin source remains here and the runtime source rema
 in the HUQAN repository.
 
 Typical update flow:
-
 1. Make plugin changes in this repository and run `npm run check`.
 2. For a runtime change, update HUQAN and let its Obsidian compatibility workflow
    run against this repository's `main`.
@@ -63,8 +62,7 @@ The server listens on `http://127.0.0.1:3000` by default.
 
 ## Configure the plugin
 
-Open **Settings → Community plugins → HUQAN Trust Panel** and set:
-
+Open **Settings → Community plugins → HUQAN** and set:
 1. Local HUQAN endpoint (default: `http://127.0.0.1:3000`)
 2. The same HUQAN API key used to start the server
 3. HUQAN workspace (default: `default`)
@@ -108,7 +106,6 @@ npm run check
 ```
 
 Release artifacts are:
-
 - `main.js`
 - `manifest.json`
 - `styles.css`
@@ -121,3 +118,7 @@ that Obsidian downloads to the GitHub Release.
 The `version-bump.mjs` helper updates `manifest.json`, `versions.json`,
 `package.json`, and `package-lock.json` together. `versions.json` is maintained
 for compatibility when the plugin's `minAppVersion` changes.
+
+> The technical plugin ID remains `huqan-trust-panel` to preserve installed-user
+> settings and the existing Community listing/update path. The visible product
+> name is simply **HUQAN**.

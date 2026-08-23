@@ -16,6 +16,9 @@ if (manifest.version !== packageJson.version) {
 if (!/^[a-z-]+$/.test(manifest.id) || manifest.id.includes('obsidian') || manifest.id.endsWith('plugin')) {
   throw new Error(`invalid Obsidian plugin id: ${manifest.id}`);
 }
+if (manifest.name !== 'HUQAN') {
+  throw new Error(`manifest.name must be HUQAN, got ${manifest.name}`);
+}
 if (typeof manifest.minAppVersion !== 'string' || !manifest.minAppVersion) {
   throw new Error('manifest.minAppVersion is required');
 }
@@ -44,8 +47,8 @@ for (const file of sourceFiles) {
   if (/\.setDynamicTooltip\(\s*\)/.test(source)) {
     throw new Error(`${file} must not use deprecated setDynamicTooltip()`);
   }
-  if (/setName\(\s*['"]HUQAN Trust Panel['"]\s*\)/.test(source)) {
-    throw new Error(`${file} must not use the plugin name in a settings heading`);
+  if (/setName\(\s*['"](?:HUQAN|HUQAN Trust Panel)['"]\s*\)/.test(source)) {
+    throw new Error(`${file} must not use the plugin name HUQAN in a settings heading`);
   }
 }
 

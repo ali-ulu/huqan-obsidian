@@ -49,7 +49,7 @@ function normalizeEndpoint(value: string): string {
   }
   const host = parsed.hostname.toLowerCase();
   if (!['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host)) {
-    throw new Error('HUQAN Trust Panel only sends API keys to a local loopback server.');
+    throw new Error('HUQAN only sends API keys to a local loopback server.');
   }
   return `${parsed.protocol}//${parsed.host}`;
 }
