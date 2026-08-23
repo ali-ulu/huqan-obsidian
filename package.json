@@ -9,6 +9,7 @@
     "test": "node --test test/*.test.js",
     "check:release": "node scripts/check-release.mjs",
     "check:bundle": "npm run build && git diff --exit-code -- main.js styles.css",
+    "check:runtime": "node scripts/check-huqan-runtime.mjs",
     "check": "npm run check:release && npm run check:bundle && npm test"
   },
   "devDependencies": {
