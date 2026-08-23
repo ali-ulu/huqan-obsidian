@@ -22,6 +22,27 @@ to a remote service. It is read-only: it never writes to HUQAN memory or execute
 - A local HUQAN server from the [HUQAN repository](https://github.com/ali-ulu/huqan).
 - A `HUQAN_API_KEY` configured on that local server.
 
+## How changes flow between repositories
+
+The plugin source of truth is this repository. Plugin TypeScript, committed bundle,
+manifest, tests, and releases are updated here; they are not copied back and forth
+with the HUQAN runtime repository.
+
+The [HUQAN repository](https://github.com/ali-ulu/huqan) owns the local server and
+runtime API. When a runtime/API surface changes, its CI checks the current plugin
+`main` against the proposed server. This is a compatibility gate, not a source
+synchronization step: the plugin source remains here and the runtime source remains
+in the HUQAN repository.
+
+Typical update flow:
+
+1. Make plugin changes in this repository and run `npm run check`.
+2. For a runtime change, update HUQAN and let its Obsidian compatibility workflow
+   run against this repository's `main`.
+3. When the compatibility check is green, update the affected side in its own PR.
+4. For a plugin release, run `node version-bump.mjs <version>`, run the checks,
+   merge to `main`, and create the matching Git tag here.
+
 ## Run HUQAN locally
 
 From a HUQAN checkout:

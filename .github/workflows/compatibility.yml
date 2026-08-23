@@ -1,0 +1,105 @@
+name: HUQAN Runtime Compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'main.js'
+      - 'manifest.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/check-huqan-runtime.mjs'
+      - '.github/workflows/compatibility.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'main.js'
+      - 'manifest.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/check-huqan-runtime.mjs'
+      - '.github/workflows/compatibility.yml'
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      huqan-ref:
+        description: 'HUQAN branch, tag, or commit to test'
+        required: false
+        default: 'main'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: Test plugin against HUQAN runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout HUQAN runtime
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ali-ulu/huqan
+          ref: ${{ inputs.huqan-ref || 'main' }}
+          path: huqan-runtime
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            huqan-runtime/package-lock.json
+
+      - name: Install plugin dependencies
+        run: npm ci
+
+      - name: Install HUQAN dependencies
+        run: npm ci --prefix huqan-runtime
+
+      - name: Start HUQAN runtime
+        shell: bash
+        env:
+          HUQAN_API_KEY: compatibility-test-key
+          HOST: 127.0.0.1
+          PORT: '3000'
+        run: |
+          set -euo pipefail
+          node huqan-runtime/server.js > "$RUNNER_TEMP/huqan-server.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/huqan-server.pid"
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/health >/dev/null; then
+              echo 'HUQAN runtime is ready.'
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/huqan-server.log"
+          exit 1
+
+      - name: Run plugin compatibility smoke
+        env:
+          HUQAN_API_KEY: compatibility-test-key
+          HUQAN_ENDPOINT: http://127.0.0.1:3000
+        run: npm run check:runtime
+
+      - name: Stop HUQAN runtime
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f "$RUNNER_TEMP/huqan-server.pid" ]]; then
+            kill "$(cat "$RUNNER_TEMP/huqan-server.pid")" 2>/dev/null || true
+          fi
+          if [[ -f "$RUNNER_TEMP/huqan-server.log" ]]; then
+            tail -50 "$RUNNER_TEMP/huqan-server.log" || true
+          fi
