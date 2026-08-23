@@ -33,15 +33,29 @@ Release 1.1.6 addresses the Community listing warning and delivers the first saf
 | Regression protection | Tests cover report formatting, contradiction details, file naming, and local vault creation. |
 | Community validation | The exact 1.1.6 release ref completed its Community scan with release, network, behavior, dependency, obfuscation, and build checks passing. |
 
-## 1.2 — Onboarding and diagnostics
+## Released in 1.2.0 — Contradiction-first results and diagnostics
 
-The first minor release should reduce setup friction without weakening the local-only boundary. Planned work includes a clearer first-run checklist, an explicit endpoint validation message, a copy-safe diagnostic summary that excludes API keys and note text, and more actionable errors for missing server, invalid workspace, and authentication failures.
+Version 1.2.0 implements the first concrete user-facing result improvement: a user can see whether attention is required, identify contradiction cards immediately, read the reason and returned evidence in place, and filter the result list by status. The release preserves the local-only and read-only boundary.
+
+The first minor release must improve the moment where a user asks, “What needs my attention?” The result modal should not make users scan a list of similarly styled cards or interpret raw status values. A contradiction must be visible immediately, explain why it was flagged, and lead the user to the returned evidence without implying that HUQAN has independently proven a universal truth.
+
+| User problem | Concrete 1.2 behavior | Acceptance test |
+|---|---|---|
+| “Did this verification find a conflict?” | The result summary shows a prominent `N contradictions found — review below` banner when at least one result is `contradicted`; otherwise it shows `No contradictions returned`. | A response containing one contradiction renders the warning banner before the result list. |
+| “Which item should I inspect first?” | Each result card uses a high-signal status label; contradictions are labeled `CONTRADICTION` and retain the red left border. | The contradiction card is visually distinct from verified and unknown cards. |
+| “Why was this marked as contradictory?” | The card displays `Why this is flagged:` followed by `contradictionReason`, or a safe fallback if the runtime did not return one. | The reason is visible without opening a secondary view. |
+| “What should I do with the evidence?” | The card states `Conflict detected — review this statement against the evidence below.` and labels the evidence as returned by the local runtime. | The guidance appears directly beneath the checked statement. |
+| “How do I focus only on problems?” | Status filter buttons show counts, including `Contradicted (n)`, and hide unrelated cards when selected. | Selecting the contradiction filter leaves only contradiction cards visible. |
+| “Does unknown mean false?” | Unknown results show `Not enough evidence — this does not mean the statement is false.` | The clarification is rendered for every unknown result. |
+| “Can I preserve what I found?” | The existing explicit `Save report to vault` action remains available; it writes a local Markdown report and does not mutate HUQAN runtime state. | The report includes status, reason, explanation and evidence while the runtime receives no write request. |
+
+Onboarding and diagnostics remain part of 1.2, but they are secondary to this visible result improvement. The first-run path should include a clear local setup checklist, explicit loopback endpoint validation, and actionable messages for a missing server, invalid workspace, and authentication failure. A copy-safe diagnostic summary may be added, but it must exclude API keys, note text, vault content, authorization headers, and raw sensitive logs.
 
 The diagnostic surface should make it easy to distinguish a local connection problem from an evidence problem. It should never recommend sending a note, API key, or raw log to a remote service.
 
 ## 1.3 — Evidence and report usability
 
-The next phase should improve how users review and reuse results. Candidate features include a report index note, links from a report back to the originating note, filters for status and risk labels, a compact summary view, and an optional report naming template. Any generated links must remain local vault links, and report creation must remain an explicit user action.
+The next phase should improve how users review and reuse results. Candidate features include a report index note, links from a report back to the originating note, filters for risk labels, a compact summary view, and an optional report naming template. Status filtering is now part of the 1.2.0 result modal rather than a future candidate. Any generated links must remain local vault links, and report creation must remain an explicit user action.
 
 A redaction-aware export option may be added only if it can reliably remove API keys, authorization headers, and user-selected sensitive text before a report leaves the vault. Until then, reports are local artifacts and should not be pasted into public issues without review.
 

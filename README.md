@@ -71,6 +71,12 @@ Open **Settings → Community plugins → HUQAN** and set:
 
 Use **Test HUQAN** before the first verification. From the results modal, choose **Save report to vault** to keep the checked statements, statuses, explanations, evidence summaries, contradiction reasons, and risk labels as a local Markdown report. The report contains note text and returned evidence, so review it before sharing.
 
+## Reading verification results
+
+The result modal is designed to make attention items visible at a glance. If one or more statements are returned as `contradicted`, the summary shows a prominent **N contradictions found — review below** banner before the result list. Each affected statement has a red `CONTRADICTION` label, a visible **Why this is flagged** explanation, and the evidence returned by the local runtime directly below it.
+
+Use the status filters to show only **Contradicted**, **Unknown**, **Verified**, or **Errors**. The filter counts tell you how many statements need review without opening every card. `Unknown` is intentionally explained as **not enough evidence**, not as proof that the statement is false. A contradiction signal is a reason to inspect the evidence and context, not an instruction to silently rewrite the note.
+
 ## Commands
 
 - `Verify current note`

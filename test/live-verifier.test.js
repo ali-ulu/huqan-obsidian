@@ -12,8 +12,13 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
   const originalLoad = Module._load;
 
   class Element {
+    constructor() {
+      this.style = {};
+      this.classList = { toggle() {} };
+    }
     empty() {}
     addClass() {}
+    setAttribute() {}
     createDiv() { return new Element(); }
     createEl() { return new Element(); }
     createSpan() { return new Element(); }
@@ -81,6 +86,7 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     vaultFolders,
     vaultCreates,
     buildVerificationReport: pluginModule.buildVerificationReport,
+    resultGuidance: pluginModule.resultGuidance,
   };
 }
 
@@ -103,6 +109,13 @@ test('settings expose searchable declarative definitions without plugin-name hea
   );
   assert.equal(typeof definitions.find(definition => definition.name === 'API key').render, 'function');
   assert.equal(typeof definitions.find(definition => definition.name === 'Connection test').render, 'function');
+});
+
+test('result guidance makes contradiction and unknown semantics explicit', () => {
+  const { resultGuidance } = loadPlugin({ settings: {}, requestHandler: async () => ({ status: 200, json: { ok: true } }) });
+  assert.match(resultGuidance('contradicted'), /Conflict detected/);
+  assert.match(resultGuidance('unknown'), /does not mean the statement is false/);
+  assert.match(resultGuidance('verified'), /Supporting evidence returned/);
 });
 
 test('verification reports preserve contradiction details and evidence in Markdown', () => {
