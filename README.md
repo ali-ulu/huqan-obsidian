@@ -15,6 +15,7 @@ to a remote service. It is read-only: it never writes to HUQAN memory or execute
 - Keeps the configured endpoint loopback-only (`127.0.0.1`, `localhost`, or
   `::1`) so a saved API key cannot be sent to an arbitrary host.
 - Bounds full-note scans to 1–40 statements (20 by default).
+- Lets you save a verification report as a Markdown file in a local `HUQAN Reports` vault folder.
 
 ## Requirements
 
@@ -68,7 +69,7 @@ Open **Settings → Community plugins → HUQAN** and set:
 3. HUQAN workspace (default: `default`)
 4. Maximum statements to check per note
 
-Use **Test HUQAN** before the first verification.
+Use **Test HUQAN** before the first verification. From the results modal, choose **Save report to vault** to keep the checked statements, statuses, explanations, evidence summaries, contradiction reasons, and risk labels as a local Markdown report. The report contains note text and returned evidence, so review it before sharing.
 
 ## Commands
 
@@ -98,6 +99,10 @@ HUQAN workspace. `unknown` means HUQAN did not have enough evidence. It is not
 a claim that the statement is false. Likewise, this plugin is not a universal
 fact checker and does not promise truth or hallucination elimination.
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned onboarding, evidence UX, report workflow, compatibility, and safe contradiction-persistence research.
+
 ## Development
 
 ```bash
@@ -120,5 +125,6 @@ The `version-bump.mjs` helper updates `manifest.json`, `versions.json`,
 for compatibility when the plugin's `minAppVersion` changes.
 
 > The technical plugin ID remains `huqan-trust-panel` to preserve installed-user
-> settings and the existing Community listing/update path. The visible product
-> name is simply **HUQAN**.
+> settings and the existing Community listing/update path. The HUQAN brand is used
+> throughout the UI and documentation; the Community manifest label is title-cased
+> as **Huqan** to satisfy the directory’s naming convention.

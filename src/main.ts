@@ -38,6 +38,81 @@ interface VerifyEnvelope { ok?: boolean;
 
 interface StatementResult { statement: string; envelope?: VerifyEnvelope; error?: string; }
 
+function quoteMarkdown(value: string): string {
+  return String(value || '').split('\n').map(line => `> ${line}`).join('\n');
+}
+
+function reportStem(sourceLabel: string): string {
+  const base = String(sourceLabel || 'note').replace(/\\/g, '/').split('/').pop() || 'note';
+  const withoutExtension = base.replace(/\.md$/i, '');
+  return withoutExtension.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'note';
+}
+
+function reportTimestamp(date: Date): string {
+  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
+}
+
+export function buildVerificationReport(
+  sourceLabel: string,
+  scope: VerifyScope,
+  results: StatementResult[],
+  generatedAt = new Date(),
+): string {
+  const counts = { verified: 0, contradicted: 0, unknown: 0, error: 0 };
+  results.forEach(result => {
+    const status = statusOf(result);
+    if (status === 'verified') counts.verified += 1;
+    else if (status === 'contradicted') counts.contradicted += 1;
+    else if (status === 'error') counts.error += 1;
+    else counts.unknown += 1;
+  });
+
+  const sections = results.map((result, index) => {
+    const status = statusOf(result);
+    const confidence = result.envelope?.data?.confidence;
+    const lines = [
+      `### ${index + 1}. ${status}`,
+      '',
+      '**Statement**',
+      quoteMarkdown(result.statement),
+    ];
+    if (typeof confidence === 'number') lines.push('', `**Confidence:** ${Math.round(confidence * 100)}%`);
+    if (result.error) lines.push('', `**Error:** ${result.error}`);
+    const explanation = result.envelope?.data?.explanation;
+    if (explanation) lines.push('', `**Explanation:** ${explanation}`);
+    const contradictionReason = result.envelope?.data?.contradictionReason;
+    if (contradictionReason) lines.push('', `**Contradiction reason:** ${contradictionReason}`);
+    const evidence = evidenceLines(result.envelope);
+    if (evidence.length > 0) lines.push('', '**Evidence**', ...evidence.map(item => `- ${item}`));
+    const riskLabels = result.envelope?.data?.risk?.labels;
+    if (Array.isArray(riskLabels) && riskLabels.length > 0) lines.push('', `**Risk signals:** ${riskLabels.join(', ')}`);
+    return lines.join('\n');
+  });
+
+  return [
+    '# HUQAN Verification Report',
+    '',
+    `- Source: ${sourceLabel}`,
+    `- Scope: ${scope}`,
+    `- Generated: ${generatedAt.toISOString()}`,
+    '',
+    '## Summary',
+    '',
+    `- Statements checked: ${results.length}`,
+    `- Verified: ${counts.verified}`,
+    `- Contradicted: ${counts.contradicted}`,
+    `- Unknown: ${counts.unknown}`,
+    `- Errors: ${counts.error}`,
+    '',
+    '## Results',
+    '',
+    ...sections,
+    '',
+    '> This report was created locally in the Obsidian vault. Review the evidence before changing any note. An unknown result is not a claim that a statement is false.',
+    '',
+  ].join('\n');
+}
+
 const DEFAULT_SETTINGS: HuqanSettings = { endpoint: 'http://127.0.0.1:3000', apiKey: '', workspaceId: 'default', maxStatements: 20 };
 
 const MAX_STATEMENT_LENGTH = 480;
@@ -105,6 +180,7 @@ class VerificationModal extends Modal {
     private readonly verifyScope: VerifyScope,
     private readonly sourceLabel: string,
     private readonly results: StatementResult[],
+    private readonly onSaveReport: () => Promise<void>,
   ) {
     super(app);
   }
@@ -134,6 +210,11 @@ class VerificationModal extends Modal {
       text: `Verified ${counts.verified} · Contradicted ${counts.contradicted} · Unknown ${counts.unknown} · Errors ${counts.error}`,
     });
     summary.createDiv({ cls: 'huqan-trust-panel__scope', text: `Scope: ${this.verifyScope}` });
+
+    const actions = shell.createDiv({ cls: 'huqan-trust-panel__actions' });
+    actions.createEl('button', { text: 'Save report to vault', cls: 'huqan-trust-panel__save-report' })
+      .addEventListener('click', () => { void this.onSaveReport(); });
+    actions.createDiv({ cls: 'huqan-trust-panel__privacy-note', text: 'The report includes the checked text and returned evidence.' });
 
     const list = shell.createDiv({ cls: 'huqan-trust-panel__results' });
     for (const result of this.results) {
@@ -346,6 +427,27 @@ export default class HuqanTrustPanelPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  private async saveVerificationReport(sourceLabel: string, scope: VerifyScope, results: StatementResult[]): Promise<void> {
+    try {
+      const folderPath = 'HUQAN Reports';
+      if (!this.app.vault.getAbstractFileByPath(folderPath)) await this.app.vault.createFolder(folderPath);
+
+      const stem = reportStem(sourceLabel);
+      const timestamp = reportTimestamp(new Date());
+      let reportPath = `${folderPath}/HUQAN Report - ${stem} - ${timestamp}.md`;
+      let suffix = 2;
+      while (this.app.vault.getAbstractFileByPath(reportPath)) {
+        reportPath = `${folderPath}/HUQAN Report - ${stem} - ${timestamp} (${suffix}).md`;
+        suffix += 1;
+      }
+
+      await this.app.vault.create(reportPath, buildVerificationReport(sourceLabel, scope, results));
+      new Notice(`Saved HUQAN report: ${reportPath}`);
+    } catch (error) {
+      new Notice(`Could not save HUQAN report: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   async testConnection(): Promise<Record<string, unknown>> {
     const endpoint = normalizeEndpoint(this.settings.endpoint);
     const response = await requestUrl({ url: `${endpoint}/health`, method: 'GET', throw: false });
@@ -389,7 +491,13 @@ export default class HuqanTrustPanelPlugin extends Plugin {
     for (const statement of statements) {
       results.push(await this.verifyOne(endpoint, statement));
     }
-    new VerificationModal(this.app, scope, label, results).open();
+    new VerificationModal(
+      this.app,
+      scope,
+      label,
+      results,
+      () => this.saveVerificationReport(label, scope, results),
+    ).open();
   }
 
   private async verifyOne(endpoint: string, statement: string): Promise<StatementResult> {
