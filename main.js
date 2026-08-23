@@ -19,6 +19,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/main.ts
 var main_exports = {};
 __export(main_exports, {
+  buildVerificationReport: () => buildVerificationReport,
   default: () => HuqanTrustPanelPlugin
 });
 module.exports = __toCommonJS(main_exports);
@@ -29,6 +30,71 @@ function isRecord(value) {
 function isVerifyEnvelope(value) {
   if (!isRecord(value) || !isRecord(value.data)) return false;
   return typeof value.data.status === "string";
+}
+function quoteMarkdown(value) {
+  return String(value || "").split("\n").map((line) => `> ${line}`).join("\n");
+}
+function reportStem(sourceLabel) {
+  const base = String(sourceLabel || "note").replace(/\\/g, "/").split("/").pop() || "note";
+  const withoutExtension = base.replace(/\.md$/i, "");
+  return withoutExtension.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "note";
+}
+function reportTimestamp(date) {
+  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "Z").replace(/:/g, "-");
+}
+function buildVerificationReport(sourceLabel, scope, results, generatedAt = /* @__PURE__ */ new Date()) {
+  const counts = { verified: 0, contradicted: 0, unknown: 0, error: 0 };
+  results.forEach((result) => {
+    const status = statusOf(result);
+    if (status === "verified") counts.verified += 1;
+    else if (status === "contradicted") counts.contradicted += 1;
+    else if (status === "error") counts.error += 1;
+    else counts.unknown += 1;
+  });
+  const sections = results.map((result, index) => {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+    const status = statusOf(result);
+    const confidence = (_b = (_a = result.envelope) == null ? void 0 : _a.data) == null ? void 0 : _b.confidence;
+    const lines = [
+      `### ${index + 1}. ${status}`,
+      "",
+      "**Statement**",
+      quoteMarkdown(result.statement)
+    ];
+    if (typeof confidence === "number") lines.push("", `**Confidence:** ${Math.round(confidence * 100)}%`);
+    if (result.error) lines.push("", `**Error:** ${result.error}`);
+    const explanation = (_d = (_c = result.envelope) == null ? void 0 : _c.data) == null ? void 0 : _d.explanation;
+    if (explanation) lines.push("", `**Explanation:** ${explanation}`);
+    const contradictionReason = (_f = (_e = result.envelope) == null ? void 0 : _e.data) == null ? void 0 : _f.contradictionReason;
+    if (contradictionReason) lines.push("", `**Contradiction reason:** ${contradictionReason}`);
+    const evidence = evidenceLines(result.envelope);
+    if (evidence.length > 0) lines.push("", "**Evidence**", ...evidence.map((item) => `- ${item}`));
+    const riskLabels = (_i = (_h = (_g = result.envelope) == null ? void 0 : _g.data) == null ? void 0 : _h.risk) == null ? void 0 : _i.labels;
+    if (Array.isArray(riskLabels) && riskLabels.length > 0) lines.push("", `**Risk signals:** ${riskLabels.join(", ")}`);
+    return lines.join("\n");
+  });
+  return [
+    "# HUQAN Verification Report",
+    "",
+    `- Source: ${sourceLabel}`,
+    `- Scope: ${scope}`,
+    `- Generated: ${generatedAt.toISOString()}`,
+    "",
+    "## Summary",
+    "",
+    `- Statements checked: ${results.length}`,
+    `- Verified: ${counts.verified}`,
+    `- Contradicted: ${counts.contradicted}`,
+    `- Unknown: ${counts.unknown}`,
+    `- Errors: ${counts.error}`,
+    "",
+    "## Results",
+    "",
+    ...sections,
+    "",
+    "> This report was created locally in the Obsidian vault. Review the evidence before changing any note. An unknown result is not a claim that a statement is false.",
+    ""
+  ].join("\n");
 }
 var DEFAULT_SETTINGS = { endpoint: "http://127.0.0.1:3000", apiKey: "", workspaceId: "default", maxStatements: 20 };
 var MAX_STATEMENT_LENGTH = 480;
@@ -78,11 +144,12 @@ function evidenceLines(envelope) {
   return ((envelope == null ? void 0 : envelope.evidence) || []).map((item) => typeof (item == null ? void 0 : item.text) === "string" ? item.text : "").filter(Boolean).slice(0, 4);
 }
 var VerificationModal = class extends import_obsidian.Modal {
-  constructor(app, verifyScope, sourceLabel, results) {
+  constructor(app, verifyScope, sourceLabel, results, onSaveReport) {
     super(app);
     this.verifyScope = verifyScope;
     this.sourceLabel = sourceLabel;
     this.results = results;
+    this.onSaveReport = onSaveReport;
   }
   onOpen() {
     var _a, _b, _c, _d, _e, _f, _g;
@@ -108,6 +175,11 @@ var VerificationModal = class extends import_obsidian.Modal {
       text: `Verified ${counts.verified} \xB7 Contradicted ${counts.contradicted} \xB7 Unknown ${counts.unknown} \xB7 Errors ${counts.error}`
     });
     summary.createDiv({ cls: "huqan-trust-panel__scope", text: `Scope: ${this.verifyScope}` });
+    const actions = shell.createDiv({ cls: "huqan-trust-panel__actions" });
+    actions.createEl("button", { text: "Save report to vault", cls: "huqan-trust-panel__save-report" }).addEventListener("click", () => {
+      void this.onSaveReport();
+    });
+    actions.createDiv({ cls: "huqan-trust-panel__privacy-note", text: "The report includes the checked text and returned evidence." });
     const list = shell.createDiv({ cls: "huqan-trust-panel__results" });
     for (const result of this.results) {
       const status = statusOf(result);
@@ -315,6 +387,24 @@ var HuqanTrustPanelPlugin = class extends import_obsidian.Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
   }
+  async saveVerificationReport(sourceLabel, scope, results) {
+    try {
+      const folderPath = "HUQAN Reports";
+      if (!this.app.vault.getAbstractFileByPath(folderPath)) await this.app.vault.createFolder(folderPath);
+      const stem = reportStem(sourceLabel);
+      const timestamp = reportTimestamp(/* @__PURE__ */ new Date());
+      let reportPath = `${folderPath}/HUQAN Report - ${stem} - ${timestamp}.md`;
+      let suffix = 2;
+      while (this.app.vault.getAbstractFileByPath(reportPath)) {
+        reportPath = `${folderPath}/HUQAN Report - ${stem} - ${timestamp} (${suffix}).md`;
+        suffix += 1;
+      }
+      await this.app.vault.create(reportPath, buildVerificationReport(sourceLabel, scope, results));
+      new import_obsidian.Notice(`Saved HUQAN report: ${reportPath}`);
+    } catch (error) {
+      new import_obsidian.Notice(`Could not save HUQAN report: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   async testConnection() {
     const endpoint = normalizeEndpoint(this.settings.endpoint);
     const response = await (0, import_obsidian.requestUrl)({ url: `${endpoint}/health`, method: "GET", throw: false });
@@ -370,7 +460,13 @@ var HuqanTrustPanelPlugin = class extends import_obsidian.Plugin {
     for (const statement of statements) {
       results.push(await this.verifyOne(endpoint, statement));
     }
-    new VerificationModal(this.app, scope, label, results).open();
+    new VerificationModal(
+      this.app,
+      scope,
+      label,
+      results,
+      () => this.saveVerificationReport(label, scope, results)
+    ).open();
   }
   async verifyOne(endpoint, statement) {
     try {
