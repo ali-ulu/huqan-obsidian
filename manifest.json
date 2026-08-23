@@ -1,7 +1,7 @@
 {
   "id": "huqan-trust-panel",
   "name": "HUQAN",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "minAppVersion": "1.5.0",
   "description": "Verify note statements against a local HUQAN runtime and inspect evidence, contradictions, and risk signals.",
   "author": "HUQAN",
