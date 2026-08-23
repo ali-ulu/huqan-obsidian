@@ -1,4 +1,4 @@
-name: Obsidian Plugin
+name: HUQAN Plugin
 
 on:
   pull_request:
@@ -120,6 +120,6 @@ jobs:
         run: |
           gh release create "$TAG" \
             --verify-tag \
-            --title "HUQAN Trust Panel $TAG" \
-            --notes "HUQAN Trust Panel for Obsidian. Requires a local HUQAN runtime. Verification is read-only and API keys are restricted to loopback endpoints." \
+            --title "HUQAN $TAG" \
+            --notes "HUQAN. Requires a local HUQAN runtime. Verification is read-only and API keys are restricted to loopback endpoints." \
             main.js manifest.json styles.css

@@ -2,7 +2,7 @@
 
 ## Scope
 
-HUQAN Trust Panel is a desktop-only, read-only Obsidian plugin. It sends verification requests only to a configured loopback HUQAN server and never calls mutation, ingest, approval, or action endpoints.
+HUQAN is a desktop-only, read-only Obsidian plugin. It sends verification requests only to a configured loopback HUQAN server and never calls mutation, ingest, approval, or action endpoints.
 
 The API key is stored in Obsidian's local plugin data. It is not an encrypted credential store. Use a dedicated local key and rotate it if the Obsidian vault or local machine may have been exposed.
 
