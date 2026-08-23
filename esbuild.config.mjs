@@ -1,11 +1,12 @@
 import esbuild from 'esbuild';
-import process from 'process';
-import { copyFile } from 'fs/promises';
-import builtins from 'builtin-modules';
+import process from 'node:process';
+import { builtinModules } from 'node:module';
+import { copyFile } from 'node:fs/promises';
 
 const prod = process.argv[2] === 'production';
 const stylesSource = 'src/styles.css';
 const stylesTarget = 'styles.css';
+const builtinExternals = [...new Set([...builtinModules, ...builtinModules.map(name => `node:${name}`)])];
 
 const copyStylesPlugin = {
   name: 'copy-styles',
@@ -23,7 +24,7 @@ const context = await esbuild.context({
     'obsidian',
     'electron',
     'better-sqlite3',
-    ...builtins,
+    ...builtinExternals,
   ],
   format: 'cjs',
   target: 'es2018',

@@ -10,8 +10,17 @@ import {
   requestUrl,
 } from 'obsidian';
 
-type VerifyStatus = 'verified' | 'contradicted' | 'unknown' | string;
+type VerifyStatus = 'verified' | 'contradicted' | 'unknown' | (string & {});
 type VerifyScope = 'current_note' | 'selection';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isVerifyEnvelope(value: unknown): value is VerifyEnvelope {
+  if (!isRecord(value) || !isRecord(value.data)) return false;
+  return typeof value.data.status === 'string';
+}
 
 interface HuqanSettings { endpoint: string; apiKey: string; workspaceId: string; maxStatements: number; }
 
@@ -168,7 +177,7 @@ class HuqanSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl('h2', { text: 'HUQAN Trust Panel' });
+    new Setting(containerEl).setName('HUQAN Trust Panel').setHeading();
     new Setting(containerEl)
       .setName('Local HUQAN endpoint')
       .setDesc('Loopback only. Your API key is never sent to a remote host.')
@@ -212,7 +221,14 @@ export default class HuqanTrustPanelPlugin extends Plugin {
   settings: HuqanSettings = { ...DEFAULT_SETTINGS };
 
   async onload(): Promise<void> {
-    this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+    const savedData: unknown = await this.loadData();
+    this.settings = { ...DEFAULT_SETTINGS };
+    if (isRecord(savedData)) {
+      if (typeof savedData.endpoint === 'string') this.settings.endpoint = savedData.endpoint;
+      if (typeof savedData.apiKey === 'string') this.settings.apiKey = savedData.apiKey;
+      if (typeof savedData.workspaceId === 'string') this.settings.workspaceId = savedData.workspaceId;
+      if (typeof savedData.maxStatements === 'number') this.settings.maxStatements = savedData.maxStatements;
+    }
     this.addSettingTab(new HuqanSettingTab(this.app, this));
     this.addRibbonIcon('shield-check', 'HUQAN: Verify current note', () => { void this.verifyCurrentNote(); });
     this.addCommand({ id: 'huqan-verify-current-note', name: 'HUQAN: Verify current note', callback: () => { void this.verifyCurrentNote(); } });
@@ -231,8 +247,9 @@ export default class HuqanTrustPanelPlugin extends Plugin {
   async testConnection(): Promise<Record<string, unknown>> {
     const endpoint = normalizeEndpoint(this.settings.endpoint);
     const response = await requestUrl({ url: `${endpoint}/health`, method: 'GET', throw: false });
-    if (response.status !== 200 || !response.json?.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json as Record<string, unknown>;
+    const body: unknown = response.json;
+    if (response.status !== 200 || !isRecord(body) || body.ok !== true) throw new Error(`HTTP ${response.status}`);
+    return body;
   }
 
   private async showConnectionTest(): Promise<void> {
@@ -245,7 +262,7 @@ export default class HuqanTrustPanelPlugin extends Plugin {
   }
 
   private async verifyCurrentNote(): Promise<void> {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView) as MarkdownView | null;
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) { new Notice('Open a markdown note first.'); return; }
     const statements = splitStatements(view.editor.getValue(), this.settings.maxStatements);
     await this.verifyStatements('current_note', statements, view.file?.path || 'Current note');
@@ -283,15 +300,20 @@ export default class HuqanTrustPanelPlugin extends Plugin {
         body: JSON.stringify({ claim: statement, workspaceId: this.settings.workspaceId || 'default' }),
         throw: false,
       });
+      const body: unknown = response.json;
       if (response.status !== 200) {
-        const message = typeof response.json?.error === 'string' ? response.json.error : response.json?.error?.message;
+        let message: string | undefined;
+        if (isRecord(body)) {
+          const error = body.error;
+          if (typeof error === 'string') message = error;
+          else if (isRecord(error) && typeof error.message === 'string') message = error.message;
+        }
         return { statement, error: message || `HUQAN returned HTTP ${response.status}` };
       }
-      const envelope = response.json as VerifyEnvelope;
-      if (!envelope?.data || typeof envelope.data.status !== 'string') {
+      if (!isVerifyEnvelope(body)) {
         return { statement, error: 'HUQAN returned an invalid verify envelope.' };
       }
-      return { statement, envelope };
+      return { statement, envelope: body };
     } catch (error) {
       return { statement, error: error instanceof Error ? error.message : String(error) };
     }
