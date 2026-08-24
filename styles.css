@@ -204,3 +204,297 @@
 .huqan-trust-panel-modal > button {
   margin-top: 12px;
 }
+
+
+/* Read-only trust graph signals */
+.huqan-graph-view-host {
+  height: 100%;
+  overflow: auto;
+}
+
+.huqan-graph-view {
+  padding: 22px;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+.huqan-graph-view__header,
+.huqan-graph-view__layout {
+  display: grid;
+  gap: 16px;
+}
+
+.huqan-graph-view__header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.huqan-graph-view__eyebrow {
+  color: var(--text-accent);
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.huqan-graph-view__title h2 {
+  margin: 4px 0;
+}
+
+.huqan-graph-view__subtitle,
+.huqan-graph-view__muted {
+  color: var(--text-muted);
+  font-size: 0.86em;
+}
+
+.huqan-graph-view__actions,
+.huqan-graph-view__filters,
+.huqan-graph-view__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.huqan-graph-view__refresh,
+.huqan-graph-view__filter {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  padding: 7px 10px;
+}
+
+.huqan-graph-view__filter.is-active {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.huqan-graph-view__status {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  padding: 9px 11px;
+}
+
+.huqan-graph-view__legend {
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+
+.huqan-graph-view__legend-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+}
+
+.huqan-graph-view__legend-dot {
+  border-radius: 50%;
+  display: inline-block;
+  height: 9px;
+  width: 9px;
+}
+
+.huqan-graph-view__legend-dot.is-conflict {
+  background: var(--text-error, #e5484d);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-error, #e5484d) 20%, transparent);
+}
+
+.huqan-graph-view__legend-dot.is-attention {
+  background: var(--text-warning, #d99b22);
+}
+
+.huqan-graph-view__legend-dot.is-evidence {
+  background: var(--text-success, #3dbb76);
+}
+
+.huqan-graph-view__layout {
+  grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.7fr);
+  align-items: stretch;
+}
+
+.huqan-graph-view__canvas-panel,
+.huqan-graph-view__details {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  min-height: 520px;
+  overflow: hidden;
+}
+
+.huqan-graph-view__svg {
+  display: block;
+  height: 100%;
+  min-height: 520px;
+  width: 100%;
+}
+
+.huqan-graph-view__edge {
+  fill: none;
+  marker-end: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  opacity: 0.65;
+}
+
+.huqan-graph-view__edge.is-evidence {
+  stroke: var(--text-success, #3dbb76);
+  stroke-width: 2;
+}
+
+.huqan-graph-view__edge.is-attention {
+  stroke: var(--text-warning, #d99b22);
+  stroke-dasharray: 6 5;
+  stroke-width: 2.5;
+}
+
+.huqan-graph-view__edge.is-conflict {
+  stroke: var(--text-error, #e5484d);
+  stroke-dasharray: 10 6;
+  stroke-width: 4;
+  opacity: 1;
+}
+
+.huqan-graph-view__node {
+  cursor: pointer;
+  outline: none;
+}
+
+.huqan-graph-view__node circle {
+  fill: var(--background-primary);
+  stroke: var(--text-muted);
+  stroke-width: 2;
+  transition: filter 120ms ease, stroke-width 120ms ease;
+}
+
+.huqan-graph-view__node:hover circle,
+.huqan-graph-view__node:focus circle {
+  filter: drop-shadow(0 0 5px var(--interactive-accent));
+  stroke-width: 3;
+}
+
+.huqan-graph-view__node.is-evidence circle {
+  fill: color-mix(in srgb, var(--text-success, #3dbb76) 15%, var(--background-primary));
+  stroke: var(--text-success, #3dbb76);
+}
+
+.huqan-graph-view__node.is-attention circle {
+  fill: color-mix(in srgb, var(--text-warning, #d99b22) 18%, var(--background-primary));
+  stroke: var(--text-warning, #d99b22);
+}
+
+.huqan-graph-view__node.is-conflict circle {
+  fill: color-mix(in srgb, var(--text-error, #e5484d) 18%, var(--background-primary));
+  stroke: var(--text-error, #e5484d);
+  stroke-width: 4;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--text-error, #e5484d) 55%, transparent));
+}
+
+.huqan-graph-view__node-label,
+.huqan-graph-view__empty {
+  fill: var(--text-normal);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.huqan-graph-view__empty {
+  fill: var(--text-muted);
+}
+
+.huqan-graph-view__details {
+  padding: 16px;
+}
+
+.huqan-graph-view__details h3,
+.huqan-graph-view__details h4 {
+  margin-top: 0;
+}
+
+.huqan-graph-view__details h4 {
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 18px;
+  padding-top: 12px;
+}
+
+.huqan-graph-view__detail-signal,
+.huqan-graph-view__conflict-detail {
+  border-radius: 7px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+}
+
+.huqan-graph-view__detail-signal {
+  display: inline-block;
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.huqan-graph-view__detail-signal.is-conflict,
+.huqan-graph-view__conflict-detail {
+  background: color-mix(in srgb, var(--text-error, #e5484d) 13%, var(--background-secondary));
+  border: 1px solid color-mix(in srgb, var(--text-error, #e5484d) 42%, transparent);
+  color: var(--text-error, #e5484d);
+}
+
+.huqan-graph-view__detail-signal.is-attention {
+  background: color-mix(in srgb, var(--text-warning, #d99b22) 13%, var(--background-secondary));
+  color: var(--text-warning, #d99b22);
+}
+
+.huqan-graph-view__detail-signal.is-evidence {
+  background: color-mix(in srgb, var(--text-success, #3dbb76) 13%, var(--background-secondary));
+  color: var(--text-success, #3dbb76);
+}
+
+.huqan-graph-view__facts {
+  color: var(--text-muted);
+  display: grid;
+  font-size: 0.84em;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.huqan-graph-view__conflict-detail {
+  color: var(--text-normal);
+  font-size: 0.84em;
+}
+
+.huqan-graph-view__conflict-detail strong {
+  color: var(--text-error, #e5484d);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.huqan-graph-view__related {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding-left: 20px;
+}
+
+.huqan-graph-view__related li.is-conflict {
+  color: var(--text-error, #e5484d);
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .huqan-graph-view__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .huqan-graph-view__canvas-panel,
+  .huqan-graph-view__details,
+  .huqan-graph-view__svg {
+    min-height: 440px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .huqan-graph-view__node circle {
+    transition: none;
+  }
+}

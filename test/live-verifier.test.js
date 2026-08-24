@@ -16,6 +16,8 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     constructor() {
       this.style = {};
       this.classList = { toggle() {} };
+      this.children = [];
+      this.textContent = '';
     }
     empty() {}
     addClass() {}
@@ -24,12 +26,22 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     createEl() { return new Element(); }
     createSpan() { return new Element(); }
     addEventListener() {}
+    appendChild(child) { this.children.push(child); return child; }
+    removeChild(child) { this.children = this.children.filter(item => item !== child); return child; }
+    setText(value) { this.textContent = String(value); }
+    querySelectorAll() { return []; }
   }
   const settingTabs = [];
   class Plugin {
     constructor() {
       this.app = {
-        workspace: { getActiveViewOfType: () => activeView },
+        workspace: {
+          getActiveViewOfType: () => activeView,
+          getLeavesOfType: () => [],
+          getRightLeaf: () => ({ setViewState: async () => {} }),
+          getLeaf: () => ({ setViewState: async () => {} }),
+          revealLeaf: () => {},
+        },
         vault: {
           getAbstractFileByPath: () => null,
           createFolder: async folderPath => { vaultFolders.push(folderPath); },
@@ -45,10 +57,15 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     addSettingTab(tab) { settingTabs.push(tab); }
     addRibbonIcon() {}
     addCommand(command) { commands.push(command); }
+    registerView(type, creator) { this.registeredView = { type, creator }; }
   }
   class Modal {
     constructor() { this.contentEl = new Element(); }
     open() { this.onOpen?.(); }
+  }
+  class ItemView {
+    constructor() { this.contentEl = new Element(); }
+    addAction() { return new Element(); }
   }
   class Notice { constructor(message) { notices.push(String(message)); } }
   class PluginSettingTab { constructor() { this.containerEl = new Element(); } }
@@ -66,11 +83,13 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     Modal,
     Notice,
     PluginSettingTab,
+    ItemView,
     Setting,
     TFile: class {},
     MarkdownView: class {},
     Editor: class {},
     requestUrl: requestHandler,
+    createSvg: () => new Element(),
   };
   Module._load = function(request, parent, isMain) {
     if (request === 'obsidian') return obsidian;
@@ -95,6 +114,7 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     buildDiagnosticSummary: pluginModule.buildDiagnosticSummary,
     explainConnectionError: pluginModule.explainConnectionError,
     resultGuidance: pluginModule.resultGuidance,
+    buildGraphViewModel: pluginModule.buildGraphViewModel,
   };
 }
 
@@ -110,7 +130,7 @@ test('settings expose searchable declarative definitions without plugin-name hea
   assert.equal(require('../manifest.json').name, 'Huqan');
   assert.equal(definitions[0].name, 'Verification');
   assert.ok(definitions.every(definition => definition.name !== 'HUQAN'));
-  assert.deepEqual(commands.map(command => command.name), ['Verify current note', 'Verify selected text', 'Test connection']);
+  assert.deepEqual(commands.map(command => command.name), ['Verify current note', 'Verify selected text', 'Test connection', 'Open trust graph']);
   assert.deepEqual(
     definitions.filter(definition => 'control' in definition).map(definition => definition.control.key),
     ['endpoint', 'workspaceId', 'maxStatements', 'reportNameTemplate'],
@@ -126,6 +146,61 @@ test('result guidance makes contradiction and unknown semantics explicit', () =>
   assert.match(resultGuidance('contradicted'), /Conflict detected/);
   assert.match(resultGuidance('unknown'), /does not mean the statement is false/);
   assert.match(resultGuidance('verified'), /Supporting evidence returned/);
+});
+
+test('graph view model promotes explicit and relation-based conflicts to red signals', () => {
+  const { buildGraphViewModel } = loadPlugin({ settings: {}, requestHandler: async () => ({ status: 200, json: { ok: true } }) });
+  const model = buildGraphViewModel({
+    nodes: [
+      { id: 'claim-a', label: 'Claim A', confidence: 0.9, evidenceCount: 1 },
+      { id: 'claim-b', label: 'Claim B', confidence: 0.2, evidenceCount: 0 },
+    ],
+    links: [{ source: 'claim-a', target: 'claim-b', relation: 'supports', confidence: 0.9, evidenceCount: 1 }],
+    conflicts: [{
+      candidateId: 'candidate-1',
+      type: 'agent-vs-graph',
+      reason: 'The proposed claim conflicts with an existing graph-backed edge.',
+      claim: 'Claim B is not supported by Claim A.',
+      proposedEdge: { from: 'claim-a', to: 'claim-b', relation: 'supports', confidence: 0.4 },
+      existingEvidence: ['existing evidence'],
+      proposedEvidence: ['proposed evidence'],
+    }],
+  });
+  assert.equal(model.conflicts.length, 1);
+  assert.equal(model.nodes.length, 2);
+  assert.ok(model.links.some(link => link.type === 'conflict-signal'));
+  assert.equal(model.nodeSignals.get('claim-a'), 'conflict');
+  assert.equal(model.nodeSignals.get('claim-b'), 'conflict');
+  assert.ok(model.conflictCount >= 1);
+});
+
+test('open trust graph registers and opens the read-only graph view', async () => {
+  const { plugin, commands } = loadPlugin({
+    settings: { endpoint: 'http://127.0.0.1:3000', apiKey: 'secret', workspaceId: 'default', maxStatements: 20 },
+    requestHandler: async () => ({ status: 200, json: { nodes: [], links: [], conflicts: [] } }),
+  });
+  await plugin.onload();
+  const command = commands.find(item => item.id === 'huqan-open-trust-graph');
+  assert.ok(command);
+  await command.callback();
+  assert.equal(plugin.registeredView.type, 'huqan-trust-graph');
+});
+
+test('graph data is fetched through the authenticated loopback read endpoint', async () => {
+  const calls = [];
+  const { plugin } = loadPlugin({
+    settings: { endpoint: 'http://127.0.0.1:3000', apiKey: 'secret', workspaceId: 'vault-a', maxStatements: 20 },
+    requestHandler: async options => {
+      calls.push(options);
+      return { status: 200, json: { nodes: [], links: [], conflicts: [] } };
+    },
+  });
+  await plugin.onload();
+  const graph = await plugin.getGraphData();
+  assert.deepEqual(graph, { nodes: [], links: [], conflicts: [] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://127.0.0.1:3000/graph-data?workspaceId=vault-a');
+  assert.equal(calls[0].headers.Authorization, 'Bearer secret');
 });
 
 test('verification reports preserve contradiction details and evidence in Markdown', () => {

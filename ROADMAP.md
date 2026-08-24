@@ -66,7 +66,15 @@ Version 1.3.0 makes verification results reusable without silently changing note
 
 A redaction-aware export option remains future work and may be added only if it can reliably remove API keys, authorization headers, and user-selected sensitive text before a report leaves the vault. Until then, reports are local artifacts and should not be pasted into public issues without review.
 
-## 1.4 — Verification workflow improvements
+## 1.4 — Read-only trust graph signals
+
+The first 1.4 graph slice is implemented as a cross-repository, read-only projection. **Open trust graph** shows the configured workspace graph, marks runtime-returned candidate conflict signals in red, highlights low-confidence or stale attention signals in amber, and exposes bounded node/evidence details without writing to the note or HUQAN runtime. Candidate conflicts remain derived review signals; the plugin does not approve, persist, or admit them.
+
+| User problem | Concrete 1.4 behavior | Boundary and acceptance test |
+|---|---|---|
+| “Where is the conflict?” | The graph overlays a red dashed conflict edge or red node ring and exposes a conflict count. | Runtime projection is bounded and workspace-filtered; plugin graph-model tests assert explicit and relation-based conflict signals. |
+| “What should I inspect next?” | Filters show all, conflict, attention, and evidence-bearing nodes/edges. | Low confidence and stale metadata are amber; no background network activity is introduced. |
+| “What evidence supports this marker?” | Selecting a node shows bounded confidence, evidence count, source labels, related edges, and returned candidate conflict reasons. | The detail view is derived from `GET /graph-data`; no mutation, ingest, learn, approval, memory write, or action request is sent. |
 
 The remaining workflow work can explore better selection handling, result comparison across runs, and a lightweight review queue inside the vault. Session-local reuse for unchanged text is already delivered in 1.3.0; any future persistent cache must have an explicit retention policy, clear invalidation behavior, and no unnecessary secret or note storage.
 
