@@ -411,6 +411,27 @@ class VerificationModal extends Modal {
     this.contentEl.empty();
   }
 }
+
+class SafeDiagnosticsModal extends Modal {
+  constructor(app: App, private readonly summary: string) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('huqan-trust-panel-modal');
+    contentEl.createEl('h2', { text: 'Safe diagnostics' });
+    contentEl.createEl('p', { text: 'This summary is safe to review manually. It contains no API key, note text, vault content, or authorization header.' });
+    contentEl.createEl('pre', { cls: 'huqan-trust-panel__diagnostics', text: this.summary });
+    contentEl.createEl('button', { text: 'Close' }).addEventListener('click', () => this.close());
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 class HuqanSettingTab extends PluginSettingTab {
   constructor(app: App, private readonly plugin: HuqanTrustPanelPlugin) {
     super(app, plugin);
@@ -482,15 +503,10 @@ class HuqanSettingTab extends PluginSettingTab {
       },
       {
         name: 'Safe diagnostics',
-        desc: 'Copy version, endpoint, and configuration flags without API keys or note text.',
+        desc: 'Show version, endpoint, and configuration flags without API keys or note text.',
         render: (setting: Setting) => {
-          setting.addButton(button => button.setButtonText('Copy safe diagnostics').onClick(async () => {
-            button.setDisabled(true);
-            try {
-              await this.plugin.copyDiagnosticSummary();
-            } finally {
-              button.setDisabled(false);
-            }
+          setting.addButton(button => button.setButtonText('Show safe diagnostics').onClick(() => {
+            this.plugin.showDiagnosticSummary();
           }));
         },
       },
@@ -580,14 +596,9 @@ class HuqanSettingTab extends PluginSettingTab {
         .onChange(async (value: string) => { this.plugin.settings.reportNameTemplate = value.trim() || DEFAULT_REPORT_NAME_TEMPLATE; await this.plugin.saveSettings(); }));
     new Setting(containerEl)
       .setName('Safe diagnostics')
-      .setDesc('Copy version, endpoint, and configuration flags without API keys or note text.')
-      .addButton(button => button.setButtonText('Copy safe diagnostics').onClick(async () => {
-        button.setDisabled(true);
-        try {
-          await this.plugin.copyDiagnosticSummary();
-        } finally {
-          button.setDisabled(false);
-        }
+      .setDesc('Show version, endpoint, and configuration flags without API keys or note text.')
+      .addButton(button => button.setButtonText('Show safe diagnostics').onClick(() => {
+        this.plugin.showDiagnosticSummary();
       }));
     new Setting(containerEl)
       .setName('Connection test')
@@ -669,14 +680,8 @@ export default class HuqanTrustPanelPlugin extends Plugin {
     }
   }
 
-  async copyDiagnosticSummary(): Promise<void> {
-    const summary = buildDiagnosticSummary(this.settings, this.manifest.version);
-    try {
-      await navigator.clipboard.writeText(summary);
-      new Notice('Safe diagnostics copied. It contains no API key or note text.');
-    } catch (error) {
-      new Notice(`Could not copy safe diagnostics: ${error instanceof Error ? error.message : String(error)}`);
-    }
+  showDiagnosticSummary(): void {
+    new SafeDiagnosticsModal(this.app, buildDiagnosticSummary(this.settings, this.manifest.version)).open();
   }
 
   async testConnection(): Promise<Record<string, unknown>> {

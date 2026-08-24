@@ -343,6 +343,24 @@ var VerificationModal = class extends import_obsidian.Modal {
     this.contentEl.empty();
   }
 };
+var SafeDiagnosticsModal = class extends import_obsidian.Modal {
+  constructor(app, summary) {
+    super(app);
+    this.summary = summary;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("huqan-trust-panel-modal");
+    contentEl.createEl("h2", { text: "Safe diagnostics" });
+    contentEl.createEl("p", { text: "This summary is safe to review manually. It contains no API key, note text, vault content, or authorization header." });
+    contentEl.createEl("pre", { cls: "huqan-trust-panel__diagnostics", text: this.summary });
+    contentEl.createEl("button", { text: "Close" }).addEventListener("click", () => this.close());
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
 var HuqanSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -413,15 +431,10 @@ var HuqanSettingTab = class extends import_obsidian.PluginSettingTab {
       },
       {
         name: "Safe diagnostics",
-        desc: "Copy version, endpoint, and configuration flags without API keys or note text.",
+        desc: "Show version, endpoint, and configuration flags without API keys or note text.",
         render: (setting) => {
-          setting.addButton((button) => button.setButtonText("Copy safe diagnostics").onClick(async () => {
-            button.setDisabled(true);
-            try {
-              await this.plugin.copyDiagnosticSummary();
-            } finally {
-              button.setDisabled(false);
-            }
+          setting.addButton((button) => button.setButtonText("Show safe diagnostics").onClick(() => {
+            this.plugin.showDiagnosticSummary();
           }));
         }
       },
@@ -498,13 +511,8 @@ var HuqanSettingTab = class extends import_obsidian.PluginSettingTab {
       this.plugin.settings.reportNameTemplate = value.trim() || DEFAULT_REPORT_NAME_TEMPLATE;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian.Setting(containerEl).setName("Safe diagnostics").setDesc("Copy version, endpoint, and configuration flags without API keys or note text.").addButton((button) => button.setButtonText("Copy safe diagnostics").onClick(async () => {
-      button.setDisabled(true);
-      try {
-        await this.plugin.copyDiagnosticSummary();
-      } finally {
-        button.setDisabled(false);
-      }
+    new import_obsidian.Setting(containerEl).setName("Safe diagnostics").setDesc("Show version, endpoint, and configuration flags without API keys or note text.").addButton((button) => button.setButtonText("Show safe diagnostics").onClick(() => {
+      this.plugin.showDiagnosticSummary();
     }));
     new import_obsidian.Setting(containerEl).setName("Connection test").setDesc("Checks the configured HUQAN /health endpoint.").addButton((button) => button.setButtonText("Test HUQAN").onClick(async () => {
       var _a;
@@ -593,14 +601,8 @@ ${entry}
       new import_obsidian.Notice(`Could not save HUQAN report: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  async copyDiagnosticSummary() {
-    const summary = buildDiagnosticSummary(this.settings, this.manifest.version);
-    try {
-      await navigator.clipboard.writeText(summary);
-      new import_obsidian.Notice("Safe diagnostics copied. It contains no API key or note text.");
-    } catch (error) {
-      new import_obsidian.Notice(`Could not copy safe diagnostics: ${error instanceof Error ? error.message : String(error)}`);
-    }
+  showDiagnosticSummary() {
+    new SafeDiagnosticsModal(this.app, buildDiagnosticSummary(this.settings, this.manifest.version)).open();
   }
   async testConnection() {
     const endpoint = normalizeEndpoint(this.settings.endpoint);

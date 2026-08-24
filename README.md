@@ -127,7 +127,7 @@ generates GitHub artifact provenance attestations, and publishes the three files
 that Obsidian downloads to the GitHub Release.
 
 The `version-bump.mjs` helper updates `manifest.json`, `versions.json`, `package.json`, and `package-lock.json` together. `versions.json` is maintained
-for compatibility when the plugin's `minAppVersion` changes. The settings page also provides a **Copy safe diagnostics** action; the copied summary contains only version, loopback endpoint, configuration flags, and statement cap, never the API key or note text.
+for compatibility when the plugin's `minAppVersion` changes. The settings page also provides a **Show safe diagnostics** action; the displayed summary contains only version, loopback endpoint, configuration flags, and statement cap, never the API key or note text.
 
 ## Publishing updates
 
