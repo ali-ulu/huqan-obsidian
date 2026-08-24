@@ -9,6 +9,7 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
   const notices = [];
   const vaultFolders = [];
   const vaultCreates = [];
+  const vaultModifies = [];
   const originalLoad = Module._load;
 
   class Element {
@@ -33,9 +34,11 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
           getAbstractFileByPath: () => null,
           createFolder: async folderPath => { vaultFolders.push(folderPath); },
           create: async (filePath, content) => { vaultCreates.push({ filePath, content }); },
+          read: async file => file.content || '',
+          modify: async (file, content) => { file.content = content; vaultModifies.push({ file, content }); },
         },
       };
-      this.manifest = { id: 'huqan-trust-panel' };
+      this.manifest = { id: 'huqan-trust-panel', version: '1.2.0' };
     }
     async loadData() { return settings; }
     async saveData() {}
@@ -64,6 +67,7 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     Notice,
     PluginSettingTab,
     Setting,
+    TFile: class {},
     MarkdownView: class {},
     Editor: class {},
     requestUrl: requestHandler,
@@ -85,7 +89,11 @@ function loadPlugin({ settings, requestHandler, activeView = null }) {
     settingTabs,
     vaultFolders,
     vaultCreates,
+    vaultModifies,
     buildVerificationReport: pluginModule.buildVerificationReport,
+    buildReportIndexEntry: pluginModule.buildReportIndexEntry,
+    buildDiagnosticSummary: pluginModule.buildDiagnosticSummary,
+    explainConnectionError: pluginModule.explainConnectionError,
     resultGuidance: pluginModule.resultGuidance,
   };
 }
@@ -105,8 +113,9 @@ test('settings expose searchable declarative definitions without plugin-name hea
   assert.deepEqual(commands.map(command => command.name), ['Verify current note', 'Verify selected text', 'Test connection']);
   assert.deepEqual(
     definitions.filter(definition => 'control' in definition).map(definition => definition.control.key),
-    ['endpoint', 'workspaceId', 'maxStatements'],
+    ['endpoint', 'workspaceId', 'maxStatements', 'reportNameTemplate'],
   );
+  assert.equal(typeof definitions.find(definition => definition.name === 'Safe diagnostics').render, 'function');
   assert.equal(typeof definitions.find(definition => definition.name === 'API key').render, 'function');
   assert.equal(typeof definitions.find(definition => definition.name === 'Connection test').render, 'function');
 });
@@ -139,28 +148,65 @@ test('verification reports preserve contradiction details and evidence in Markdo
     new Date('2026-08-24T12:00:00.000Z'),
   );
   assert.match(report, /# HUQAN Verification Report/);
+  assert.ok(report.includes('- Open in vault: [[notes/example]]'));
   assert.match(report, /- Contradicted: 1/);
   assert.ok(report.includes('The local evidence disagrees.'));
   assert.ok(report.includes('Source A conflicts with the claim.'));
   assert.ok(report.includes('**Risk signals:** conflict'));
 });
 
-test('verification reports are saved as local vault Markdown files', async () => {
+test('verification reports are saved, indexed, and use the configured filename template', async () => {
   const { plugin, notices, vaultFolders, vaultCreates } = loadPlugin({
-    settings: {},
+    settings: { reportNameTemplate: 'Review - {note} - {timestamp}' },
     requestHandler: async () => ({ status: 200, json: { ok: true } }),
   });
+  await plugin.onload();
   await plugin.saveVerificationReport('notes/Conflict note.md', 'current_note', [{
     statement: 'The example claim',
     envelope: { data: { status: 'contradicted', contradictionReason: 'Evidence disagrees.' } },
   }]);
   assert.deepEqual(vaultFolders, ['HUQAN Reports']);
-  assert.equal(vaultCreates.length, 1);
-  assert.ok(vaultCreates[0].filePath.startsWith('HUQAN Reports/HUQAN Report - Conflict-note - '));
-  assert.ok(vaultCreates[0].filePath.endsWith('.md'));
-  assert.match(vaultCreates[0].content, /Contradicted: 1/);
-  assert.ok(vaultCreates[0].content.includes('Evidence disagrees.'));
+  assert.equal(vaultCreates.length, 2);
+  const reportFile = vaultCreates.find(file => file.filePath.startsWith('HUQAN Reports/Review - Conflict-note - '));
+  const indexFile = vaultCreates.find(file => file.filePath === 'HUQAN Reports/HUQAN Reports Index.md');
+  assert.ok(reportFile);
+  assert.ok(indexFile);
+  assert.match(reportFile.filePath, /\.md$/);
+  assert.match(reportFile.content, /Contradicted: 1/);
+  assert.ok(reportFile.content.includes('Evidence disagrees.'));
+  assert.ok(indexFile.content.includes('[[Review - Conflict-note - '));
   assert.ok(notices.some(message => message.includes('Saved HUQAN report')));
+});
+
+test('safe diagnostics exclude API keys and note content', () => {
+  const { buildDiagnosticSummary } = loadPlugin({ settings: {}, requestHandler: async () => ({ status: 200, json: { ok: true } }) });
+  const summary = buildDiagnosticSummary({ endpoint: 'http://127.0.0.1:3000', apiKey: 'do-not-copy', workspaceId: 'vault-a', maxStatements: 20, reportNameTemplate: 'Review' }, '1.2.0');
+  assert.ok(summary.includes('HUQAN plugin version: 1.2.0'));
+  assert.ok(summary.includes('API key configured: yes'));
+  assert.ok(!summary.includes('do-not-copy'));
+  assert.ok(!summary.includes('private note text'));
+});
+
+test('connection errors are translated into actionable local guidance', () => {
+  const { explainConnectionError } = loadPlugin({ settings: {}, requestHandler: async () => ({ status: 200, json: { ok: true } }) });
+  assert.match(explainConnectionError(new Error('ECONNREFUSED')), /local HUQAN server could not be reached/i);
+  assert.match(explainConnectionError(new Error('HTTP 401')), /API key/i);
+});
+
+test('unchanged statements reuse the in-memory result without a second network request', async () => {
+  const calls = [];
+  const { plugin, notices } = loadPlugin({
+    settings: { endpoint: 'http://127.0.0.1:3000', apiKey: 'secret', workspaceId: 'vault-a', maxStatements: 20 },
+    requestHandler: async options => {
+      calls.push(options);
+      return { status: 200, json: { ok: true, data: { status: 'contradicted', contradictionReason: 'The evidence conflicts.' } } };
+    },
+  });
+  await plugin.onload();
+  await plugin.verifyStatements('selection', ['Cats are animals'], 'Selected text');
+  await plugin.verifyStatements('selection', ['Cats are animals'], 'Selected text');
+  assert.equal(calls.length, 1);
+  assert.ok(notices.some(message => message.includes('Reused 1 unchanged local result')));
 });
 
 test('selected text is verified through the local HUQAN v2 endpoint', async () => {

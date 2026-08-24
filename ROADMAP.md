@@ -53,15 +53,24 @@ Onboarding and diagnostics remain part of 1.2, but they are secondary to this vi
 
 The diagnostic surface should make it easy to distinguish a local connection problem from an evidence problem. It should never recommend sending a note, API key, or raw log to a remote service.
 
-## 1.3 — Evidence and report usability
+## Released in 1.3.0 — Evidence and report usability
 
-The next phase should improve how users review and reuse results. Candidate features include a report index note, links from a report back to the originating note, filters for risk labels, a compact summary view, and an optional report naming template. Status filtering is now part of the 1.2.0 result modal rather than a future candidate. Any generated links must remain local vault links, and report creation must remain an explicit user action.
+Version 1.3.0 makes verification results reusable without silently changing notes or runtime state. Reports now include a local link back to the originating Markdown note, every saved report is listed in `HUQAN Reports/HUQAN Reports Index.md`, report filenames support `{note}` and `{timestamp}` templates, and the result modal adds a `Risk signals` filter. The release also adds safe diagnostics and a session-local cache for unchanged statements.
 
-A redaction-aware export option may be added only if it can reliably remove API keys, authorization headers, and user-selected sensitive text before a report leaves the vault. Until then, reports are local artifacts and should not be pasted into public issues without review.
+| User-facing improvement | Delivered behavior |
+|---|---|
+| Find an earlier report | The local report index records timestamp, source note, report link, and result counts. |
+| Return to the note | Markdown reports include a local Obsidian link such as `[[notes/example]]` when the source is a note path. |
+| Keep filenames predictable | Settings accept `{note}` and `{timestamp}` placeholders with path-safe sanitization. |
+| Focus on risky results | The result modal filters cards carrying risk labels, independently of their status. |
+| Share a diagnostic without leaking secrets | Safe diagnostics copy only version, loopback endpoint, configuration flags, and statement cap. |
+| Avoid duplicate checks in one session | Unchanged statements reuse an in-memory result; settings changes clear the cache. |
+
+A redaction-aware export option remains future work and may be added only if it can reliably remove API keys, authorization headers, and user-selected sensitive text before a report leaves the vault. Until then, reports are local artifacts and should not be pasted into public issues without review.
 
 ## 1.4 — Verification workflow improvements
 
-This phase can explore incremental verification, better selection handling, result comparison across runs, and a lightweight review queue inside the vault. The plugin should avoid repeated requests for unchanged text where a local cache can be implemented safely, transparently, and without storing secrets unnecessarily.
+The remaining workflow work can explore better selection handling, result comparison across runs, and a lightweight review queue inside the vault. Session-local reuse for unchanged text is already delivered in 1.3.0; any future persistent cache must have an explicit retention policy, clear invalidation behavior, and no unnecessary secret or note storage.
 
 Performance work should preserve the existing statement bound and should not introduce background network activity, telemetry, remote asset loading, or automatic note edits.
 

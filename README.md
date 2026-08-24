@@ -69,13 +69,13 @@ Open **Settings → Community plugins → HUQAN** and set:
 3. HUQAN workspace (default: `default`)
 4. Maximum statements to check per note
 
-Use **Test HUQAN** before the first verification. From the results modal, choose **Save report to vault** to keep the checked statements, statuses, explanations, evidence summaries, contradiction reasons, and risk labels as a local Markdown report. The report contains note text and returned evidence, so review it before sharing.
+Use **Test HUQAN** before the first verification. From the results modal, choose **Save report to vault** to keep the checked statements, statuses, explanations, evidence summaries, contradiction reasons, and risk labels as a local Markdown report. The report contains note text and returned evidence, so review it before sharing. Each saved report is also added to `HUQAN Reports/HUQAN Reports Index.md`, and the filename can use `{note}` and `{timestamp}` in settings.
 
 ## Reading verification results
 
 The result modal is designed to make attention items visible at a glance. If one or more statements are returned as `contradicted`, the summary shows a prominent **N contradictions found — review below** banner before the result list. Each affected statement has a red `CONTRADICTION` label, a visible **Why this is flagged** explanation, and the evidence returned by the local runtime directly below it.
 
-Use the status filters to show only **Contradicted**, **Unknown**, **Verified**, or **Errors**. The filter counts tell you how many statements need review without opening every card. `Unknown` is intentionally explained as **not enough evidence**, not as proof that the statement is false. A contradiction signal is a reason to inspect the evidence and context, not an instruction to silently rewrite the note.
+Use the status filters to show only **Contradicted**, **Unknown**, **Verified**, **Risk signals**, or **Errors**. The filter counts tell you how many statements need review without opening every card. `Unknown` is intentionally explained as **not enough evidence**, not as proof that the statement is false. A contradiction signal is a reason to inspect the evidence and context, not an instruction to silently rewrite the note. Repeating verification for unchanged text during the same plugin session reuses the local in-memory result instead of making another request.
 
 ## Commands
 
@@ -126,9 +126,8 @@ The release workflow builds the bundle, validates the Community Plugins contract
 generates GitHub artifact provenance attestations, and publishes the three files
 that Obsidian downloads to the GitHub Release.
 
-The `version-bump.mjs` helper updates `manifest.json`, `versions.json`,
-`package.json`, and `package-lock.json` together. `versions.json` is maintained
-for compatibility when the plugin's `minAppVersion` changes.
+The `version-bump.mjs` helper updates `manifest.json`, `versions.json`, `package.json`, and `package-lock.json` together. `versions.json` is maintained
+for compatibility when the plugin's `minAppVersion` changes. The settings page also provides a **Copy safe diagnostics** action; the copied summary contains only version, loopback endpoint, configuration flags, and statement cap, never the API key or note text.
 
 > The technical plugin ID remains `huqan-trust-panel` to preserve installed-user
 > settings and the existing Community listing/update path. The HUQAN brand is used

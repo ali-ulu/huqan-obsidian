@@ -8,6 +8,7 @@ import {
   PluginSettingTab,
   Setting,
   SettingDefinition,
+  TFile,
   requestUrl,
 } from 'obsidian';
 
@@ -23,7 +24,13 @@ function isVerifyEnvelope(value: unknown): value is VerifyEnvelope {
   return typeof value.data.status === 'string';
 }
 
-interface HuqanSettings { endpoint: string; apiKey: string; workspaceId: string; maxStatements: number; }
+interface HuqanSettings {
+  endpoint: string;
+  apiKey: string;
+  workspaceId: string;
+  maxStatements: number;
+  reportNameTemplate: string;
+}
 
 interface VerifyEnvelope { ok?: boolean;
   data?: {
@@ -50,6 +57,68 @@ function reportStem(sourceLabel: string): string {
 
 function reportTimestamp(date: Date): string {
   return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
+}
+
+const DEFAULT_REPORT_NAME_TEMPLATE = 'HUQAN Report - {note} - {timestamp}';
+
+function sourceVaultLink(sourceLabel: string): string | undefined {
+  if (!/\.md$/i.test(sourceLabel)) return undefined;
+  return `[[${sourceLabel.replace(/\\/g, '/').replace(/\.md$/i, '')}]]`;
+}
+
+function reportFileName(sourceLabel: string, timestamp: string, template: string): string {
+  const rendered = String(template || DEFAULT_REPORT_NAME_TEMPLATE)
+    .replace(/\{note\}/g, reportStem(sourceLabel))
+    .replace(/\{timestamp\}/g, timestamp)
+    .replace(/\.md$/i, '')
+    .replace(/[\\/]/g, '-')
+    .replace(/[^a-zA-Z0-9._() -]+/g, '-')
+    .trim()
+    .replace(/[ .-]+$/g, '');
+  return `${rendered || `HUQAN Report - ${reportStem(sourceLabel)} - ${timestamp}`}.md`;
+}
+
+function reportIndexTitle(reportPath: string): string {
+  return reportPath.split('/').pop()?.replace(/\.md$/i, '') || 'HUQAN Verification Report';
+}
+
+function resultCounts(results: StatementResult[]): { verified: number; contradicted: number; unknown: number; error: number } {
+  const counts = { verified: 0, contradicted: 0, unknown: 0, error: 0 };
+  results.forEach(result => {
+    const status = statusOf(result);
+    if (status === 'verified') counts.verified += 1;
+    else if (status === 'contradicted') counts.contradicted += 1;
+    else if (status === 'error') counts.error += 1;
+    else counts.unknown += 1;
+  });
+  return counts;
+}
+
+export function buildReportIndexEntry(
+  sourceLabel: string,
+  reportPath: string,
+  results: StatementResult[],
+  generatedAt = new Date(),
+): string {
+  const counts = resultCounts(results);
+  return `- ${generatedAt.toISOString()} · [[${reportIndexTitle(reportPath)}]] · ${sourceLabel} · Contradicted ${counts.contradicted} · Unknown ${counts.unknown} · Verified ${counts.verified} · Errors ${counts.error}`;
+}
+
+export function buildDiagnosticSummary(settings: HuqanSettings, pluginVersion = 'unknown'): string {
+  let endpointSummary = 'invalid loopback endpoint';
+  try {
+    const endpoint = new URL(settings.endpoint);
+    endpointSummary = `${endpoint.protocol}//${endpoint.hostname}${endpoint.port ? `:${endpoint.port}` : ''}`;
+  } catch {
+    // Keep diagnostics copy-safe even when the endpoint setting is malformed.
+  }
+  return [
+    `HUQAN plugin version: ${pluginVersion}`,
+    `Loopback endpoint: ${endpointSummary}`,
+    `API key configured: ${settings.apiKey ? 'yes' : 'no'}`,
+    `Workspace configured: ${settings.workspaceId.trim() ? 'yes' : 'no'}`,
+    `Statement cap: ${settings.maxStatements}`,
+  ].join('\n');
 }
 
 export function buildVerificationReport(
@@ -93,6 +162,7 @@ export function buildVerificationReport(
     '# HUQAN Verification Report',
     '',
     `- Source: ${sourceLabel}`,
+    ...(sourceVaultLink(sourceLabel) ? [`- Open in vault: ${sourceVaultLink(sourceLabel)}`] : []),
     `- Scope: ${scope}`,
     `- Generated: ${generatedAt.toISOString()}`,
     '',
@@ -113,7 +183,13 @@ export function buildVerificationReport(
   ].join('\n');
 }
 
-const DEFAULT_SETTINGS: HuqanSettings = { endpoint: 'http://127.0.0.1:3000', apiKey: '', workspaceId: 'default', maxStatements: 20 };
+const DEFAULT_SETTINGS: HuqanSettings = {
+  endpoint: 'http://127.0.0.1:3000',
+  apiKey: '',
+  workspaceId: 'default',
+  maxStatements: 20,
+  reportNameTemplate: DEFAULT_REPORT_NAME_TEMPLATE,
+};
 
 const MAX_STATEMENT_LENGTH = 480;
 
@@ -183,6 +259,24 @@ export function resultGuidance(status: VerifyStatus | 'error'): string {
   return 'Review the returned context before relying on this statement.';
 }
 
+function riskLabels(result: StatementResult): string[] {
+  const labels = result.envelope?.data?.risk?.labels;
+  return Array.isArray(labels) ? labels.map(String).filter(Boolean) : [];
+}
+
+function hasRiskSignal(result: StatementResult): boolean {
+  return riskLabels(result).length > 0;
+}
+
+export function explainConnectionError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/loopback|http:\/\/|https:\/\//i.test(message) && /local|endpoint|host|server/i.test(message)) return message;
+  if (/401|403|authentication|unauthori[sz]ed|api key/i.test(message)) return 'HUQAN rejected the API key. Check the local runtime key and try again.';
+  if (/404|endpoint/i.test(message)) return 'The local HUQAN endpoint was not found. Check the server URL and runtime version.';
+  if (/network|fetch|refused|econn|failed to connect|timed out/i.test(message)) return 'The local HUQAN server could not be reached. Start it and check the loopback endpoint.';
+  return `HUQAN connection failed: ${message}`;
+}
+
 function statusPriority(status: VerifyStatus | 'error'): number {
   if (status === 'contradicted') return 0;
   if (status === 'error') return 1;
@@ -212,13 +306,14 @@ class VerificationModal extends Modal {
     header.createEl('h2', { text: 'Evidence & Trust' });
     header.createDiv({ cls: 'huqan-trust-panel__source', text: this.sourceLabel });
 
-    const counts = { verified: 0, contradicted: 0, unknown: 0, error: 0 };
+    const counts = { verified: 0, contradicted: 0, unknown: 0, error: 0, risk: 0 };
     for (const result of this.results) {
       const status = statusOf(result);
       if (status === 'verified') counts.verified += 1;
       else if (status === 'contradicted') counts.contradicted += 1;
       else if (status === 'error') counts.error += 1;
       else counts.unknown += 1;
+      if (hasRiskSignal(result)) counts.risk += 1;
     }
 
     const summary = shell.createDiv({ cls: 'huqan-trust-panel__summary' });
@@ -240,11 +335,11 @@ class VerificationModal extends Modal {
       .addEventListener('click', () => { void this.onSaveReport(); });
     actions.createDiv({ cls: 'huqan-trust-panel__privacy-note', text: 'The report includes the checked text and returned evidence.' });
 
-    const cards: Array<{ status: string; element: HTMLElement }> = [];
+    const cards: Array<{ status: string; hasRisk: boolean; element: HTMLElement }> = [];
     const filterButtons: Array<{ key: string; button: HTMLButtonElement }> = [];
     const applyFilter = (filter: string): void => {
-      cards.forEach(({ status, element }) => {
-        element.style.display = filter === 'all' || status === filter ? '' : 'none';
+      cards.forEach(({ status, hasRisk, element }) => {
+        element.style.display = filter === 'all' || status === filter || (filter === 'risk' && hasRisk) ? '' : 'none';
       });
       filterButtons.forEach(({ key, button }) => {
         const active = key === filter;
@@ -259,6 +354,7 @@ class VerificationModal extends Modal {
       { key: 'contradicted', label: `Contradicted (${counts.contradicted})` },
       { key: 'unknown', label: `Unknown (${counts.unknown})` },
       { key: 'verified', label: `Verified (${counts.verified})` },
+      { key: 'risk', label: `Risk signals (${counts.risk})` },
       { key: 'error', label: `Errors (${counts.error})` },
     ];
     filterOptions.forEach(({ key, label }) => {
@@ -273,7 +369,7 @@ class VerificationModal extends Modal {
     for (const result of orderedResults) {
       const status = statusOf(result);
       const card = list.createDiv({ cls: `huqan-trust-panel__result is-${status}` });
-      cards.push({ status, element: card });
+      cards.push({ status, hasRisk: hasRiskSignal(result), element: card });
       const top = card.createDiv({ cls: 'huqan-trust-panel__result-top' });
       top.createSpan({ cls: 'huqan-trust-panel__status', text: status === 'contradicted' ? 'CONTRADICTION' : status.toUpperCase() });
       const confidence = result.envelope?.data?.confidence;
@@ -303,9 +399,9 @@ class VerificationModal extends Modal {
       } else {
         card.createDiv({ cls: 'huqan-trust-panel__no-evidence', text: 'No evidence summary was returned for this result.' });
       }
-      const riskLabels = result.envelope?.data?.risk?.labels;
-      if (Array.isArray(riskLabels) && riskLabels.length > 0) {
-        card.createDiv({ cls: 'huqan-trust-panel__risk', text: `Risk signals: ${riskLabels.join(', ')}` });
+      const labels = riskLabels(result);
+      if (labels.length > 0) {
+        card.createDiv({ cls: 'huqan-trust-panel__risk', text: `Risk signals: ${labels.join(', ')}` });
       }
     }
     applyFilter('all');
@@ -325,6 +421,10 @@ class HuqanSettingTab extends PluginSettingTab {
       {
         name: 'Verification',
         desc: 'Configure the local HUQAN verification connection.',
+      },
+      {
+        name: 'Setup checklist',
+        desc: '1. Start the local HUQAN runtime. 2. Set the loopback endpoint and API key. 3. Test the connection. 4. Verify a note or selection.',
       },
       {
         name: 'Local endpoint',
@@ -376,6 +476,25 @@ class HuqanSettingTab extends PluginSettingTab {
         },
       },
       {
+        name: 'Report filename template',
+        desc: 'Optional local filename template. Use {note} and {timestamp}; no data leaves the vault.',
+        control: { type: 'text', key: 'reportNameTemplate', defaultValue: DEFAULT_REPORT_NAME_TEMPLATE },
+      },
+      {
+        name: 'Safe diagnostics',
+        desc: 'Copy version, endpoint, and configuration flags without API keys or note text.',
+        render: (setting: Setting) => {
+          setting.addButton(button => button.setButtonText('Copy safe diagnostics').onClick(async () => {
+            button.setDisabled(true);
+            try {
+              await this.plugin.copyDiagnosticSummary();
+            } finally {
+              button.setDisabled(false);
+            }
+          }));
+        },
+      },
+      {
         name: 'Connection test',
         desc: 'Checks the configured HUQAN /health endpoint.',
         render: (setting: Setting) => {
@@ -385,7 +504,7 @@ class HuqanSettingTab extends PluginSettingTab {
               const health = await this.plugin.testConnection();
               new Notice(`HUQAN connected: ${health.service || 'huqan'} · ${health.nodes ?? '?'} nodes`);
             } catch (error) {
-              new Notice(`HUQAN connection failed: ${error instanceof Error ? error.message : String(error)}`);
+              new Notice(explainConnectionError(error));
             } finally {
               button.setDisabled(false);
             }
@@ -415,6 +534,9 @@ class HuqanSettingTab extends PluginSettingTab {
           : DEFAULT_SETTINGS.maxStatements;
         break;
       }
+      case 'reportNameTemplate':
+        this.plugin.settings.reportNameTemplate = String(value ?? '').trim() || DEFAULT_REPORT_NAME_TEMPLATE;
+        break;
       default:
         return;
     }
@@ -425,6 +547,9 @@ class HuqanSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     new Setting(containerEl).setName('Verification').setHeading();
+    new Setting(containerEl)
+      .setName('Setup checklist')
+      .setDesc('1. Start the local HUQAN runtime. 2. Set the loopback endpoint and API key. 3. Test the connection. 4. Verify a note or selection.');
     new Setting(containerEl)
       .setName('Local HUQAN endpoint')
       .setDesc('Loopback only. Your API key is never sent to a remote host.')
@@ -449,6 +574,22 @@ class HuqanSettingTab extends PluginSettingTab {
       .addSlider(slider => slider.setLimits(1, 40, 1).setValue(this.plugin.settings.maxStatements)
         .onChange(async (value: number) => { this.plugin.settings.maxStatements = value; await this.plugin.saveSettings(); }));
     new Setting(containerEl)
+      .setName('Report filename template')
+      .setDesc('Optional local filename template. Use {note} and {timestamp}; no data leaves the vault.')
+      .addText(text => text.setPlaceholder(DEFAULT_REPORT_NAME_TEMPLATE).setValue(this.plugin.settings.reportNameTemplate)
+        .onChange(async (value: string) => { this.plugin.settings.reportNameTemplate = value.trim() || DEFAULT_REPORT_NAME_TEMPLATE; await this.plugin.saveSettings(); }));
+    new Setting(containerEl)
+      .setName('Safe diagnostics')
+      .setDesc('Copy version, endpoint, and configuration flags without API keys or note text.')
+      .addButton(button => button.setButtonText('Copy safe diagnostics').onClick(async () => {
+        button.setDisabled(true);
+        try {
+          await this.plugin.copyDiagnosticSummary();
+        } finally {
+          button.setDisabled(false);
+        }
+      }));
+    new Setting(containerEl)
       .setName('Connection test')
       .setDesc('Checks the configured HUQAN /health endpoint.')
       .addButton(button => button.setButtonText('Test HUQAN').onClick(async () => {
@@ -457,7 +598,7 @@ class HuqanSettingTab extends PluginSettingTab {
           const health = await this.plugin.testConnection();
           new Notice(`HUQAN connected: ${health.service || 'huqan'} · ${health.nodes ?? '?'} nodes`);
         } catch (error) {
-          new Notice(`HUQAN connection failed: ${error instanceof Error ? error.message : String(error)}`);
+          new Notice(explainConnectionError(error));
         } finally {
           button.setDisabled(false);
         }
@@ -466,6 +607,7 @@ class HuqanSettingTab extends PluginSettingTab {
 }
 export default class HuqanTrustPanelPlugin extends Plugin {
   settings: HuqanSettings = { ...DEFAULT_SETTINGS };
+  private readonly verificationCache = new Map<string, StatementResult>();
 
   async onload(): Promise<void> {
     const savedData: unknown = await this.loadData();
@@ -475,6 +617,7 @@ export default class HuqanTrustPanelPlugin extends Plugin {
       if (typeof savedData.apiKey === 'string') this.settings.apiKey = savedData.apiKey;
       if (typeof savedData.workspaceId === 'string') this.settings.workspaceId = savedData.workspaceId;
       if (typeof savedData.maxStatements === 'number') this.settings.maxStatements = savedData.maxStatements;
+      if (typeof savedData.reportNameTemplate === 'string') this.settings.reportNameTemplate = savedData.reportNameTemplate.trim() || DEFAULT_REPORT_NAME_TEMPLATE;
     }
     this.addSettingTab(new HuqanSettingTab(this.app, this));
     this.addRibbonIcon('shield-check', 'Verify current note', () => { void this.verifyCurrentNote(); });
@@ -488,6 +631,7 @@ export default class HuqanTrustPanelPlugin extends Plugin {
   }
 
   async saveSettings(): Promise<void> {
+    this.verificationCache.clear();
     await this.saveData(this.settings);
   }
 
@@ -496,19 +640,42 @@ export default class HuqanTrustPanelPlugin extends Plugin {
       const folderPath = 'HUQAN Reports';
       if (!this.app.vault.getAbstractFileByPath(folderPath)) await this.app.vault.createFolder(folderPath);
 
-      const stem = reportStem(sourceLabel);
       const timestamp = reportTimestamp(new Date());
-      let reportPath = `${folderPath}/HUQAN Report - ${stem} - ${timestamp}.md`;
+      let reportPath = `${folderPath}/${reportFileName(sourceLabel, timestamp, this.settings.reportNameTemplate)}`;
       let suffix = 2;
       while (this.app.vault.getAbstractFileByPath(reportPath)) {
-        reportPath = `${folderPath}/HUQAN Report - ${stem} - ${timestamp} (${suffix}).md`;
+        const extensionlessPath = reportPath.replace(/\.md$/i, '');
+        reportPath = `${extensionlessPath} (${suffix}).md`;
         suffix += 1;
       }
 
       await this.app.vault.create(reportPath, buildVerificationReport(sourceLabel, scope, results));
+      try {
+        const indexPath = `${folderPath}/HUQAN Reports Index.md`;
+        const indexFile = this.app.vault.getAbstractFileByPath(indexPath);
+        const entry = buildReportIndexEntry(sourceLabel, reportPath, results);
+        if (indexFile instanceof TFile) {
+          const current = await this.app.vault.read(indexFile);
+          await this.app.vault.modify(indexFile, `${current.trim()}${current.trim() ? '\n' : ''}${entry}\n`);
+        } else {
+          await this.app.vault.create(indexPath, `# HUQAN Reports Index\n\n${entry}\n`);
+        }
+      } catch (indexError) {
+        new Notice(`Report saved, but the report index could not be updated: ${indexError instanceof Error ? indexError.message : String(indexError)}`);
+      }
       new Notice(`Saved HUQAN report: ${reportPath}`);
     } catch (error) {
       new Notice(`Could not save HUQAN report: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async copyDiagnosticSummary(): Promise<void> {
+    const summary = buildDiagnosticSummary(this.settings, this.manifest.version);
+    try {
+      await navigator.clipboard.writeText(summary);
+      new Notice('Safe diagnostics copied. It contains no API key or note text.');
+    } catch (error) {
+      new Notice(`Could not copy safe diagnostics: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -548,13 +715,24 @@ export default class HuqanTrustPanelPlugin extends Plugin {
     if (statements.length === 0) { new Notice('No verifiable text found.'); return; }
     let endpoint: string;
     try { endpoint = normalizeEndpoint(this.settings.endpoint); }
-    catch (error) { new Notice(error instanceof Error ? error.message : String(error)); return; }
+    catch (error) { new Notice(explainConnectionError(error)); return; }
 
     new Notice(`HUQAN is checking ${statements.length} statement${statements.length === 1 ? '' : 's'}…`);
     const results: StatementResult[] = [];
+    let reused = 0;
     for (const statement of statements) {
-      results.push(await this.verifyOne(endpoint, statement));
+      const cacheKey = `${endpoint}\u0000${this.settings.workspaceId || 'default'}\u0000${statement}`;
+      const cached = this.verificationCache.get(cacheKey);
+      if (cached) {
+        results.push(cached);
+        reused += 1;
+        continue;
+      }
+      const result = await this.verifyOne(endpoint, statement);
+      results.push(result);
+      if (!result.error) this.verificationCache.set(cacheKey, result);
     }
+    if (reused > 0) new Notice(`Reused ${reused} unchanged local result${reused === 1 ? '' : 's'}; no network request was needed.`);
     new VerificationModal(
       this.app,
       scope,
