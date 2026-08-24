@@ -16,6 +16,7 @@ to a remote service. It is read-only: it never writes to HUQAN memory or execute
   `::1`) so a saved API key cannot be sent to an arbitrary host.
 - Bounds full-note scans to 1–40 statements (20 by default).
 - Lets you save a verification report as a Markdown file in a local `HUQAN Reports` vault folder.
+- **Open trust graph** — opens a workspace-scoped, read-only graph view with red conflict-signal edges/nodes, amber attention signals, filters, and bounded node details.
 
 ## Requirements
 
@@ -77,11 +78,16 @@ The result modal is designed to make attention items visible at a glance. If one
 
 Use the status filters to show only **Contradicted**, **Unknown**, **Verified**, **Risk signals**, or **Errors**. The filter counts tell you how many statements need review without opening every card. `Unknown` is intentionally explained as **not enough evidence**, not as proof that the statement is false. A contradiction signal is a reason to inspect the evidence and context, not an instruction to silently rewrite the note. Repeating verification for unchanged text during the same plugin session reuses the local in-memory result instead of making another request.
 
+### Trust graph
+
+Run **Open trust graph** to inspect the configured workspace’s graph without changing the note or HUQAN runtime. Red dashed edges and red node rings indicate a **conflict signal** returned by the runtime or a clearly conflict-like relation label; amber styling indicates low confidence or stale metadata. The graph view labels these as derived signals, not universal truth. Click a node to inspect its bounded confidence, evidence count, source labels, related edges, and any returned candidate conflict reason. The view reads `GET /graph-data` only and never accepts or mutates candidate claims.
+
 ## Commands
 
 - `Verify current note`
 - `Verify selected text`
 - `Test connection`
+- `Open trust graph`
 
 The shield ribbon icon runs **Verify current note**.
 
@@ -93,7 +99,7 @@ blast radius, the plugin refuses to send the key to non-loopback hosts.
 
 The plugin has no telemetry, advertising, remote asset loading, self-update,
 or dependency-install behavior. Network access is limited to the configured
-loopback HUQAN server.
+loopback HUQAN server, including the read-only `GET /graph-data` surface used by the trust graph.
 
 Verification is read-only. This plugin does not call HUQAN ingest, learn,
 approval, mutation, or action endpoints.

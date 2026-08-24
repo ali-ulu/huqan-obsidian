@@ -1,6 +1,7 @@
 import {
   App,
   Editor,
+  ItemView,
   MarkdownView,
   Modal,
   Notice,
@@ -9,6 +10,7 @@ import {
   Setting,
   SettingDefinition,
   TFile,
+  WorkspaceLeaf,
   requestUrl,
 } from 'obsidian';
 
@@ -44,6 +46,56 @@ interface VerifyEnvelope { ok?: boolean;
   evidence?: Array<{ text?: string; kind?: string; confidence?: number }>; error?: { code?: string; message?: string } | string | null; }
 
 interface StatementResult { statement: string; envelope?: VerifyEnvelope; error?: string; }
+
+interface GraphNode {
+  id?: string;
+  label?: string;
+  weight?: number;
+  edgeCount?: number;
+  confidence?: number;
+  evidenceCount?: number;
+  sources?: string[];
+  last_seen?: string;
+  created_at?: string;
+}
+
+interface GraphLink {
+  source?: string;
+  target?: string;
+  relation?: string;
+  type?: string;
+  weight?: number;
+  confidence?: number;
+  evidenceSource?: string;
+  sourceRef?: string;
+  evidenceCount?: number;
+  updatedAt?: string;
+  createdAt?: string;
+}
+
+interface GraphConflict {
+  candidateId?: string;
+  claim?: string;
+  type?: string;
+  reason?: string;
+  recommendation?: string;
+  status?: string;
+  workspaceId?: string;
+  sourceRef?: string;
+  provenanceId?: string;
+  proposedEdge?: { from?: string; to?: string; relation?: string; confidence?: number };
+  existingEvidence?: string[];
+  proposedEvidence?: string[];
+  createdAt?: string;
+}
+
+interface GraphData {
+  nodes?: GraphNode[];
+  links?: GraphLink[];
+  conflicts?: GraphConflict[];
+  memoryNodes?: GraphNode[];
+  memoryLinks?: GraphLink[];
+}
 
 function quoteMarkdown(value: string): string {
   return String(value || '').split('\n').map(line => `> ${line}`).join('\n');
@@ -285,6 +337,142 @@ function statusPriority(status: VerifyStatus | 'error'): number {
   return 4;
 }
 
+const GRAPH_VIEW_TYPE = 'huqan-trust-graph';
+const GRAPH_VIEW_TITLE = 'HUQAN Trust Graph';
+const GRAPH_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+
+type GraphSvgOptions = {
+  cls?: string | string[];
+  attr?: { [key: string]: string | number | boolean | null };
+};
+
+type GraphSvgParent = {
+  createSvg<K extends keyof SVGElementTagNameMap>(tag: K, options?: GraphSvgOptions | string): SVGElementTagNameMap[K];
+};
+
+function createGraphSvg<K extends keyof SVGElementTagNameMap>(parent: GraphSvgParent, tag: K, options?: GraphSvgOptions | string): SVGElementTagNameMap[K] {
+  return parent.createSvg(tag, options);
+}
+
+type GraphSignal = 'conflict' | 'attention' | 'evidence' | 'normal';
+
+export interface GraphViewModel {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  conflicts: GraphConflict[];
+  nodeSignals: Map<string, GraphSignal>;
+  linkSignals: Map<string, GraphSignal>;
+  conflictCount: number;
+  attentionCount: number;
+  evidenceCount: number;
+}
+
+function graphId(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function graphLinkKey(link: GraphLink): string {
+  return `${graphId(link.source)}\\u0000${graphId(link.target)}\\u0000${graphId(link.relation || link.type)}`;
+}
+
+function relationText(link: GraphLink): string {
+  return String(link.relation || link.type || '').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+}
+
+function isConflictRelation(link: GraphLink): boolean {
+  return /contradict|conflict|disagree|inconsist|oppos|negat|deny|reject|celisk|degil/.test(relationText(link));
+}
+
+function isStaleGraphItem(value: string | undefined): boolean {
+  if (!value) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && Date.now() - timestamp > GRAPH_STALE_MS;
+}
+
+function conflictMatchesLink(conflict: GraphConflict, link: GraphLink): boolean {
+  const proposed = conflict.proposedEdge;
+  if (!proposed) return false;
+  return graphId(proposed.from) === graphId(link.source)
+    && graphId(proposed.to) === graphId(link.target)
+    && (!proposed.relation || relationText(link) === relationText({ relation: proposed.relation }));
+}
+
+export function buildGraphViewModel(data: GraphData): GraphViewModel {
+  const nodes = Array.isArray(data.nodes) ? data.nodes.map(node => ({ ...node })) : [];
+  const links = Array.isArray(data.links) ? data.links.map(link => ({ ...link })) : [];
+  const conflicts = Array.isArray(data.conflicts) ? data.conflicts.map(conflict => ({ ...conflict })) : [];
+  const nodeById = new Map(nodes.map(node => [graphId(node.id), node]));
+
+  const ensureNode = (id: string): void => {
+    if (!id || nodeById.has(id)) return;
+    const node: GraphNode = { id, label: id, confidence: 0, evidenceCount: 0, edgeCount: 0 };
+    nodes.push(node);
+    nodeById.set(id, node);
+  };
+
+  conflicts.forEach(conflict => {
+    const from = graphId(conflict.proposedEdge?.from);
+    const to = graphId(conflict.proposedEdge?.to);
+    ensureNode(from);
+    ensureNode(to);
+    if (!from || !to) return;
+    const virtualLink: GraphLink = {
+      source: from,
+      target: to,
+      relation: conflict.proposedEdge?.relation || 'CONFLICT',
+      confidence: conflict.proposedEdge?.confidence,
+      type: 'conflict-signal',
+      evidenceCount: (conflict.existingEvidence?.length || 0) + (conflict.proposedEvidence?.length || 0),
+      sourceRef: conflict.sourceRef,
+    };
+    if (!links.some(link => link.type === 'conflict-signal' && conflictMatchesLink(conflict, link))) links.push(virtualLink);
+  });
+
+  const nodeSignals = new Map<string, GraphSignal>();
+  const linkSignals = new Map<string, GraphSignal>();
+  const markNode = (id: string, signal: GraphSignal): void => {
+    if (!id) return;
+    const previous = nodeSignals.get(id);
+    const rank: Record<GraphSignal, number> = { normal: 0, evidence: 1, attention: 2, conflict: 3 };
+    if (!previous || rank[signal] > rank[previous]) nodeSignals.set(id, signal);
+  };
+
+  links.forEach(link => {
+    const explicitConflict = Boolean((link as GraphLink & { conflict?: boolean; contradiction?: boolean }).conflict
+      || (link as GraphLink & { contradiction?: boolean }).contradiction);
+    const matchedConflict = conflicts.some(conflict => conflictMatchesLink(conflict, link));
+    const signal: GraphSignal = explicitConflict || matchedConflict || isConflictRelation(link)
+      ? 'conflict'
+      : (Number(link.confidence ?? link.weight ?? 1) < 0.35 || isStaleGraphItem(link.updatedAt || link.createdAt))
+        ? 'attention'
+        : (Number(link.evidenceCount || 0) > 0 ? 'evidence' : 'normal');
+    linkSignals.set(graphLinkKey(link), signal);
+    markNode(graphId(link.source), signal);
+    markNode(graphId(link.target), signal);
+  });
+
+  nodes.forEach(node => {
+    const id = graphId(node.id);
+    if (!nodeSignals.has(id)) {
+      const signal: GraphSignal = Number(node.confidence ?? node.weight ?? 1) < 0.35 || isStaleGraphItem(node.last_seen || node.created_at)
+        ? 'attention'
+        : Number(node.evidenceCount || 0) > 0 ? 'evidence' : 'normal';
+      markNode(id, signal);
+    }
+  });
+
+  return {
+    nodes,
+    links,
+    conflicts,
+    nodeSignals,
+    linkSignals,
+    conflictCount: [...linkSignals.values()].filter(signal => signal === 'conflict').length,
+    attentionCount: [...nodeSignals.values()].filter(signal => signal === 'attention').length,
+    evidenceCount: nodes.filter(node => Number(node.evidenceCount || 0) > 0).length,
+  };
+}
+
 class VerificationModal extends Modal {
   constructor(
     app: App,
@@ -410,6 +598,260 @@ class VerificationModal extends Modal {
   onClose(): void {
     this.contentEl.empty();
   }
+}
+
+class HuqanGraphView extends ItemView {
+  private model: GraphViewModel = buildGraphViewModel({});
+  private filter = 'all';
+  private selectedNodeId = '';
+  private graphSvg?: SVGSVGElement;
+  private detailsEl?: HTMLElement;
+  private statusEl?: HTMLElement;
+  private readonly plugin: HuqanTrustPanelPlugin;
+
+  constructor(leaf: WorkspaceLeaf, plugin: HuqanTrustPanelPlugin) {
+    super(leaf);
+    this.plugin = plugin;
+    this.navigation = false;
+    this.icon = 'git-branch';
+  }
+
+  getViewType(): string {
+    return GRAPH_VIEW_TYPE;
+  }
+
+  getDisplayText(): string {
+    return GRAPH_VIEW_TITLE;
+  }
+
+  async onOpen(): Promise<void> {
+    await this.renderView();
+  }
+
+  async onClose(): Promise<void> {
+    this.contentEl.empty();
+  }
+
+  private async renderView(): Promise<void> {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('huqan-graph-view-host');
+    const shell = contentEl.createDiv({ cls: 'huqan-graph-view' });
+    const header = shell.createDiv({ cls: 'huqan-graph-view__header' });
+    const title = header.createDiv({ cls: 'huqan-graph-view__title' });
+    title.createDiv({ cls: 'huqan-graph-view__eyebrow', text: 'Read-only graph signals' });
+    title.createEl('h2', { text: 'Trust Graph' });
+    title.createDiv({ cls: 'huqan-graph-view__subtitle', text: `Workspace: ${this.plugin.settings.workspaceId || 'default'}` });
+    const actions = header.createDiv({ cls: 'huqan-graph-view__actions' });
+    const refresh = actions.createEl('button', { cls: 'huqan-graph-view__refresh', text: 'Refresh graph' });
+    refresh.type = 'button';
+    refresh.addEventListener('click', () => { void this.loadGraph(); });
+
+    this.statusEl = shell.createDiv({ cls: 'huqan-graph-view__status', text: 'Loading graph data…' });
+    const legend = shell.createDiv({ cls: 'huqan-graph-view__legend', attr: { 'aria-label': 'Graph signal legend' } });
+    this.addLegendItem(legend, 'conflict', 'Conflict signal', 'Derived from runtime conflict metadata or conflict-like relation labels.');
+    this.addLegendItem(legend, 'attention', 'Attention', 'Low confidence or stale graph metadata.');
+    this.addLegendItem(legend, 'evidence', 'Evidence-bearing', 'The runtime returned one or more evidence references.');
+
+    const filterBar = shell.createDiv({ cls: 'huqan-graph-view__filters', attr: { 'aria-label': 'Graph filters' } });
+    [
+      ['all', 'All'],
+      ['conflict', 'Conflict signals'],
+      ['attention', 'Attention'],
+      ['evidence', 'Evidence-bearing'],
+    ].forEach(([key, label]) => {
+      const button = filterBar.createEl('button', { cls: 'huqan-graph-view__filter', text: label });
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        this.filter = key;
+        this.updateFilterButtons(filterBar);
+        this.drawGraph();
+      });
+    });
+    this.updateFilterButtons(filterBar);
+
+    const layout = shell.createDiv({ cls: 'huqan-graph-view__layout' });
+    const graphPanel = layout.createDiv({ cls: 'huqan-graph-view__canvas-panel' });
+    this.graphSvg = createGraphSvg(graphPanel, 'svg', {
+      cls: 'huqan-graph-view__svg',
+      attr: { viewBox: '0 0 900 520', role: 'img', 'aria-label': 'HUQAN trust graph' },
+    });
+    graphPanel.appendChild(this.graphSvg);
+    this.detailsEl = layout.createDiv({ cls: 'huqan-graph-view__details' });
+    this.detailsEl.createEl('h3', { text: 'Select a node' });
+    this.detailsEl.createDiv({ cls: 'huqan-graph-view__muted', text: 'Click a node to inspect its bounded graph metadata and any conflict signal.' });
+    await this.loadGraph();
+  }
+
+  private addLegendItem(parent: HTMLElement, signal: GraphSignal, label: string, description: string): void {
+    const item = parent.createDiv({ cls: 'huqan-graph-view__legend-item' });
+    item.createSpan({ cls: `huqan-graph-view__legend-dot is-${signal}` });
+    item.createDiv({ cls: 'huqan-graph-view__legend-copy', text: label });
+    item.setAttribute('title', description);
+  }
+
+  private updateFilterButtons(filterBar: HTMLElement): void {
+    filterBar.querySelectorAll('button').forEach(button => {
+      const active = button.textContent?.toLowerCase().startsWith(this.filter === 'all' ? 'all' : this.filter) || false;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+  }
+
+  private async loadGraph(): Promise<void> {
+    if (!this.statusEl) return;
+    this.statusEl.setText('Loading graph data…');
+    try {
+      const data = await this.plugin.getGraphData();
+      this.model = buildGraphViewModel(data);
+      this.statusEl.setText(`${this.model.nodes.length} nodes · ${this.model.links.length} relations · ${this.model.conflictCount} conflict signals · ${this.model.attentionCount} attention nodes`);
+      this.drawGraph();
+    } catch (error) {
+      this.model = buildGraphViewModel({});
+      this.statusEl.setText(`Graph unavailable: ${explainConnectionError(error)}`);
+      this.drawGraph();
+      if (this.detailsEl) {
+        this.detailsEl.empty();
+        this.detailsEl.createEl('h3', { text: 'Graph unavailable' });
+        this.detailsEl.createDiv({ cls: 'huqan-graph-view__muted', text: 'No runtime state was changed. Check the loopback server, workspace, and API key, then refresh.' });
+      }
+    }
+  }
+
+  private drawGraph(): void {
+    const svg = this.graphSvg;
+    if (!svg) return;
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const visibleNodes = this.model.nodes.filter(node => {
+      const signal = this.model.nodeSignals.get(graphId(node.id)) || 'normal';
+      if (this.filter === 'all') return true;
+      if (this.filter === 'conflict') return signal === 'conflict';
+      if (this.filter === 'attention') return signal === 'conflict' || signal === 'attention';
+      if (this.filter === 'evidence') return Number(node.evidenceCount || 0) > 0;
+      return true;
+    }).slice(0, 60);
+    const visibleIds = new Set(visibleNodes.map(node => graphId(node.id)));
+    const visibleLinks = this.model.links.filter(link => visibleIds.has(graphId(link.source)) && visibleIds.has(graphId(link.target)));
+    const positions = new Map<string, { x: number; y: number }>();
+    const centerX = 450;
+    const centerY = 260;
+    const radiusX = Math.min(350, 100 + visibleNodes.length * 8);
+    const radiusY = Math.min(190, 75 + visibleNodes.length * 4);
+    visibleNodes.forEach((node, index) => {
+      const angle = visibleNodes.length === 1 ? 0 : (Math.PI * 2 * index) / visibleNodes.length - Math.PI / 2;
+      positions.set(graphId(node.id), {
+        x: centerX + Math.cos(angle) * radiusX,
+        y: centerY + Math.sin(angle) * radiusY,
+      });
+    });
+
+    const defs = createGraphSvg(svg as unknown as GraphSvgParent, 'defs');
+    svg.appendChild(defs);
+    const marker = createGraphSvg(defs as unknown as GraphSvgParent, 'marker', { attr: { id: 'huqan-graph-arrow-conflict', markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: 'auto', markerUnits: 'strokeWidth' } });
+    defs.appendChild(marker);
+    const markerPath = createGraphSvg(marker as unknown as GraphSvgParent, 'path', { attr: { d: 'M0,0 L8,4 L0,8 z', fill: 'currentColor' } });
+    marker.appendChild(markerPath);
+
+    visibleLinks.forEach(link => {
+      const from = positions.get(graphId(link.source));
+      const to = positions.get(graphId(link.target));
+      if (!from || !to) return;
+      const signal = this.model.linkSignals.get(graphLinkKey(link)) || 'normal';
+      const line = createGraphSvg(svg as unknown as GraphSvgParent, 'line', {
+        cls: `huqan-graph-view__edge is-${signal}`,
+        attr: { x1: from.x, y1: from.y, x2: to.x, y2: to.y, 'data-relation': link.relation || link.type || 'related' },
+      });
+      if (signal === 'conflict') line.setAttribute('marker-end', 'url(#huqan-graph-arrow-conflict)');
+      const title = createGraphSvg(line as unknown as GraphSvgParent, 'title');
+      title.textContent = `${link.relation || link.type || 'related'} · ${signalLabel(signal)}`;
+      line.appendChild(title);
+      svg.appendChild(line);
+    });
+
+    if (visibleNodes.length === 0) {
+      const empty = createGraphSvg(svg as unknown as GraphSvgParent, 'text', { cls: 'huqan-graph-view__empty', attr: { x: centerX, y: centerY, 'text-anchor': 'middle' } });
+      empty.textContent = 'No nodes match this filter';
+      svg.appendChild(empty);
+      return;
+    }
+
+    visibleNodes.forEach(node => {
+      const id = graphId(node.id);
+      const position = positions.get(id);
+      if (!position) return;
+      const signal = this.model.nodeSignals.get(id) || 'normal';
+      const group = createGraphSvg(svg as unknown as GraphSvgParent, 'g', { cls: `huqan-graph-view__node is-${signal}`, attr: { transform: `translate(${position.x} ${position.y})`, tabindex: '0', role: 'button', 'aria-label': `Inspect ${node.label || id}` } });
+      group.addEventListener('click', () => this.selectNode(id));
+      group.addEventListener('keydown', (event: KeyboardEvent) => {
+        if (event.key === 'Enter' || event.key === ' ') this.selectNode(id);
+      });
+      const circle = createGraphSvg(group as unknown as GraphSvgParent, 'circle', { attr: { r: signal === 'conflict' ? 17 : 14 } });
+      const title = createGraphSvg(circle as unknown as GraphSvgParent, 'title');
+      title.textContent = `${node.label || id} · ${signalLabel(signal)}`;
+      circle.appendChild(title);
+      group.appendChild(circle);
+      const label = createGraphSvg(group as unknown as GraphSvgParent, 'text', { cls: 'huqan-graph-view__node-label', attr: { x: 23, y: 4 } });
+      label.textContent = String(node.label || id).slice(0, 42);
+      group.appendChild(label);
+      svg.appendChild(group);
+    });
+
+    const first = visibleNodes.find(node => graphId(node.id) === this.selectedNodeId) || visibleNodes[0];
+    if (first) this.selectNode(graphId(first.id));
+    else if (this.detailsEl) {
+      this.detailsEl.empty();
+      this.detailsEl.createEl('h3', { text: 'No matching nodes' });
+      this.detailsEl.createDiv({ cls: 'huqan-graph-view__muted', text: 'Choose another filter or refresh the graph.' });
+    }
+  }
+
+  private selectNode(nodeId: string): void {
+    this.selectedNodeId = nodeId;
+    const node = this.model.nodes.find(item => graphId(item.id) === nodeId);
+    if (!node || !this.detailsEl) return;
+    this.detailsEl.empty();
+    const signal = this.model.nodeSignals.get(nodeId) || 'normal';
+    this.detailsEl.createDiv({ cls: `huqan-graph-view__detail-signal is-${signal}`, text: signalLabel(signal) });
+    this.detailsEl.createEl('h3', { text: String(node.label || nodeId) });
+    this.detailsEl.createDiv({ cls: 'huqan-graph-view__muted', text: 'Derived graph signal — review evidence before changing any note.' });
+    const facts = this.detailsEl.createDiv({ cls: 'huqan-graph-view__facts' });
+    facts.createDiv({ text: `Confidence: ${formatConfidence(node.confidence ?? node.weight)}` });
+    facts.createDiv({ text: `Evidence references: ${Number(node.evidenceCount || 0)}` });
+    facts.createDiv({ text: `Relations: ${Number(node.edgeCount || 0)}` });
+    if (node.sources?.length) facts.createDiv({ text: `Sources: ${node.sources.join(', ')}` });
+
+    const conflicts = this.model.conflicts.filter(conflict => graphId(conflict.proposedEdge?.from) === nodeId || graphId(conflict.proposedEdge?.to) === nodeId);
+    if (conflicts.length > 0) {
+      this.detailsEl.createEl('h4', { text: 'Conflict signals' });
+      conflicts.slice(0, 6).forEach(conflict => {
+        const card = this.detailsEl?.createDiv({ cls: 'huqan-graph-view__conflict-detail' });
+        card?.createEl('strong', { text: conflict.type || 'Conflict' });
+        card?.createDiv({ text: conflict.reason || 'A candidate claim conflicts with graph-backed evidence.' });
+        if (conflict.claim) card?.createDiv({ cls: 'huqan-graph-view__muted', text: `Claim: ${conflict.claim}` });
+      });
+    }
+
+    const related = this.model.links.filter(link => graphId(link.source) === nodeId || graphId(link.target) === nodeId).slice(0, 12);
+    if (related.length > 0) {
+      this.detailsEl.createEl('h4', { text: 'Related edges' });
+      const list = this.detailsEl.createEl('ul', { cls: 'huqan-graph-view__related' });
+      related.forEach(link => {
+        const signalForLink = this.model.linkSignals.get(graphLinkKey(link)) || 'normal';
+        list.createEl('li', { cls: `is-${signalForLink}`, text: `${graphId(link.source)} → ${link.relation || link.type || 'related'} → ${graphId(link.target)}` });
+      });
+    }
+  }
+}
+
+function signalLabel(signal: GraphSignal): string {
+  if (signal === 'conflict') return 'CONFLICT SIGNAL';
+  if (signal === 'attention') return 'ATTENTION';
+  if (signal === 'evidence') return 'EVIDENCE-BEARING';
+  return 'NORMAL';
+}
+
+function formatConfidence(value: number | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value * 100)}%` : '—';
 }
 
 class SafeDiagnosticsModal extends Modal {
@@ -631,6 +1073,7 @@ export default class HuqanTrustPanelPlugin extends Plugin {
       if (typeof savedData.reportNameTemplate === 'string') this.settings.reportNameTemplate = savedData.reportNameTemplate.trim() || DEFAULT_REPORT_NAME_TEMPLATE;
     }
     this.addSettingTab(new HuqanSettingTab(this.app, this));
+    this.registerView(GRAPH_VIEW_TYPE, leaf => new HuqanGraphView(leaf, this));
     this.addRibbonIcon('shield-check', 'Verify current note', () => { void this.verifyCurrentNote(); });
     this.addCommand({ id: 'huqan-verify-current-note', name: 'Verify current note', callback: () => { void this.verifyCurrentNote(); } });
     this.addCommand({
@@ -639,6 +1082,15 @@ export default class HuqanTrustPanelPlugin extends Plugin {
       editorCallback: (editor: Editor) => { void this.verifySelection(editor); },
     });
     this.addCommand({ id: 'huqan-test-connection', name: 'Test connection', callback: () => { void this.showConnectionTest(); } });
+    this.addCommand({ id: 'huqan-open-trust-graph', name: 'Open trust graph', callback: () => { void this.openGraphView(); } });
+  }
+
+  async openGraphView(): Promise<void> {
+    const workspace = this.app.workspace;
+    const existing = workspace.getLeavesOfType(GRAPH_VIEW_TYPE)[0];
+    const leaf = existing || workspace.getRightLeaf(false) || workspace.getLeaf(true);
+    await leaf.setViewState({ type: GRAPH_VIEW_TYPE, active: true });
+    workspace.revealLeaf(leaf);
   }
 
   async saveSettings(): Promise<void> {
@@ -690,6 +1142,27 @@ export default class HuqanTrustPanelPlugin extends Plugin {
     const body: unknown = response.json;
     if (response.status !== 200 || !isRecord(body) || body.ok !== true) throw new Error(`HTTP ${response.status}`);
     return body;
+  }
+
+  async getGraphData(): Promise<GraphData> {
+    if (!this.settings.apiKey) throw new Error('Set the HUQAN API key in plugin settings first.');
+    const endpoint = normalizeEndpoint(this.settings.endpoint);
+    const workspaceId = this.settings.workspaceId || 'default';
+    const response = await requestUrl({
+      url: `${endpoint}/graph-data?workspaceId=${encodeURIComponent(workspaceId)}`,
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.settings.apiKey}` },
+      throw: false,
+    });
+    const body: unknown = response.json;
+    if (response.status !== 200) {
+      if (isRecord(body) && typeof body.error === 'string') throw new Error(body.error);
+      throw new Error(`HTTP ${response.status}`);
+    }
+    if (!isRecord(body) || (body.nodes !== undefined && !Array.isArray(body.nodes)) || (body.links !== undefined && !Array.isArray(body.links))) {
+      throw new Error('HUQAN returned an invalid graph-data response.');
+    }
+    return body as GraphData;
   }
 
   private async showConnectionTest(): Promise<void> {
