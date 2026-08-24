@@ -105,10 +105,6 @@ HUQAN workspace. `unknown` means HUQAN did not have enough evidence. It is not
 a claim that the statement is false. Likewise, this plugin is not a universal
 fact checker and does not promise truth or hallucination elimination.
 
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for planned onboarding, evidence UX, report workflow, compatibility, and safe contradiction-persistence research.
-
 ## Development
 
 ```bash
