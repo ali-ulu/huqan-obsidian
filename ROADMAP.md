@@ -49,9 +49,7 @@ The first minor release must improve the moment where a user asks, “What needs
 | “Does unknown mean false?” | Unknown results show `Not enough evidence — this does not mean the statement is false.` | The clarification is rendered for every unknown result. |
 | “Can I preserve what I found?” | The existing explicit `Save report to vault` action remains available; it writes a local Markdown report and does not mutate HUQAN runtime state. | The report includes status, reason, explanation and evidence while the runtime receives no write request. |
 
-Onboarding and diagnostics remain part of 1.2, but they are secondary to this visible result improvement. The first-run path should include a clear local setup checklist, explicit loopback endpoint validation, and actionable messages for a missing server, invalid workspace, and authentication failure. A copy-safe diagnostic summary may be added, but it must exclude API keys, note text, vault content, authorization headers, and raw sensitive logs.
-
-The diagnostic surface should make it easy to distinguish a local connection problem from an evidence problem. It should never recommend sending a note, API key, or raw log to a remote service.
+The 1.2.0 result experience is complete. The first-run setup checklist, actionable local connection messages, and safe diagnostics were delivered in 1.3.0. These features distinguish a local connection problem from an evidence problem and never recommend sending a note, API key, or raw log to a remote service.
 
 ## Released in 1.3.0 — Evidence and report usability
 
