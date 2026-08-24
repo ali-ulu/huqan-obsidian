@@ -116,6 +116,7 @@ test('settings expose searchable declarative definitions without plugin-name hea
     ['endpoint', 'workspaceId', 'maxStatements', 'reportNameTemplate'],
   );
   assert.equal(typeof definitions.find(definition => definition.name === 'Safe diagnostics').render, 'function');
+  assert.match(definitions.find(definition => definition.name === 'Safe diagnostics').desc, /Show version/);
   assert.equal(typeof definitions.find(definition => definition.name === 'API key').render, 'function');
   assert.equal(typeof definitions.find(definition => definition.name === 'Connection test').render, 'function');
 });

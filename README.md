@@ -105,10 +105,6 @@ HUQAN workspace. `unknown` means HUQAN did not have enough evidence. It is not
 a claim that the statement is false. Likewise, this plugin is not a universal
 fact checker and does not promise truth or hallucination elimination.
 
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for planned onboarding, evidence UX, report workflow, compatibility, and safe contradiction-persistence research.
-
 ## Development
 
 ```bash
@@ -127,7 +123,13 @@ generates GitHub artifact provenance attestations, and publishes the three files
 that Obsidian downloads to the GitHub Release.
 
 The `version-bump.mjs` helper updates `manifest.json`, `versions.json`, `package.json`, and `package-lock.json` together. `versions.json` is maintained
-for compatibility when the plugin's `minAppVersion` changes. The settings page also provides a **Copy safe diagnostics** action; the copied summary contains only version, loopback endpoint, configuration flags, and statement cap, never the API key or note text.
+for compatibility when the plugin's `minAppVersion` changes. The settings page also provides a **Show safe diagnostics** action; the displayed summary contains only version, loopback endpoint, configuration flags, and statement cap, never the API key or note text.
+
+## Publishing updates
+
+After a version bump is merged to `main`, push the matching tag, for example `git push origin 1.3.0`. The pinned `.github/workflows/release.yml` action then installs from the lockfile, audits dependencies, validates the Community contract, runs tests and the production build, creates and verifies provenance attestations, checks reproducibility, and publishes only `main.js`, `manifest.json`, and `styles.css` as a stable GitHub release.
+
+The Community account’s **Check for new releases** step remains manual. Community review is tied to the owner’s account and the current public interface does not provide a supported repository action trigger for queuing that review. After the GitHub release is stable, run that check once and wait for the exact tag/commit scan to complete; do not start a second scan while it is pending.
 
 ## Publishing updates
 

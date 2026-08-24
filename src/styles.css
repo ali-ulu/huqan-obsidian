@@ -189,3 +189,18 @@
 .huqan-trust-panel__error {
   color: var(--text-error);
 }
+
+.huqan-trust-panel__diagnostics {
+  overflow-x: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.huqan-trust-panel-modal > button {
+  margin-top: 12px;
+}
